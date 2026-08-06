@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FHC Monitoring Dashboard | ตู้ดับเพลิง - ตึกภูมิสิริมังคลานุสรณ์</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0d0906; --surface:#150e0a; --card:#1c130d; --border:#2e1e14; --border2:#3a2618;
+  --accent:#ff7a3d; --accent2:#cc4a1a; --text:#f2d9c4; --muted:#8a6a4e;
+  --ok-top:#2e1a0f; --ok-mid:#1f120a; --ok-bdr:#8a4a1a; --ok-shd:#3a1e0a; --ok-glow:rgba(255,140,50,.35); --ok-txt:#ff9d5c;
+  --br-top:#2e1a1a; --br-mid:#1f0f0f; --br-bdr:#8b1a1a; --br-shd:#5a0a0a; --br-glow:rgba(255,50,50,.4); --br-txt:#ff4444;
+  --un-top:#241a16; --un-mid:#181210; --un-bdr:#3a2a20; --un-shd:#100a08; --un-txt:#a08060;
+  --success:#ff9d5c; --warning:#ffd700; --danger:#ff4444; --info:#ffb347;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Sarabun',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;
+  background-image:radial-gradient(ellipse at 15% 10%,rgba(255,120,50,.05) 0%,transparent 45%),
+                    radial-gradient(ellipse at 85% 90%,rgba(255,60,30,.04) 0%,transparent 45%);}
+.hdr{background:linear-gradient(180deg,#0a0605,#140a06);border-bottom:1px solid var(--border2);
+  display:flex;align-items:center;justify-content:space-between;padding:11px 20px;position:sticky;top:0;z-index:50;
+  box-shadow:0 2px 20px rgba(0,0,0,.4);}
+.hdr-left{display:flex;align-items:center;gap:12px;}
+.logo{background:linear-gradient(135deg,#331100,#4d2200);border:1px solid var(--accent2);border-radius:9px;
+  padding:7px 13px;font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;color:var(--accent);letter-spacing:.1em;}
+.hdr h1{font-size:16px;font-weight:700;color:#fff;}
+.hdr h1 span{color:var(--accent);}
+.hdr-sub{font-size:11px;color:var(--muted);margin-top:1px;}
+.hdr-right{display:flex;align-items:center;gap:14px;}
+.live-badge{display:flex;align-items:center;gap:6px;background:rgba(255,140,50,.08);border:1px solid rgba(255,140,50,.25);
+  border-radius:100px;padding:4px 11px;font-size:11px;font-family:'IBM Plex Mono',monospace;color:var(--success);}
+.live-dot{width:6px;height:6px;background:var(--success);border-radius:50%;animation:pulse 1.5s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:.25;}}
+.clock{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted);}
+
+.statbar{display:flex;gap:10px;padding:12px 20px;overflow-x:auto;border-bottom:1px solid var(--border);background:rgba(0,0,0,.3);}
+.stat{flex-shrink:0;background:var(--surface);border:1px solid var(--border2);border-radius:9px;padding:10px 18px;text-align:center;min-width:100px;}
+.stat .n{font-family:'IBM Plex Mono',monospace;font-size:24px;font-weight:700;line-height:1;}
+.stat .l{font-size:10px;color:var(--muted);margin-top:4px;}
+.stat.total .n{color:var(--info)}.stat.ok .n{color:var(--success)}.stat.br .n{color:var(--danger)}.stat.un .n{color:var(--muted)}
+
+.ctrl{display:flex;align-items:center;gap:10px;padding:12px 20px;background:var(--surface);border-bottom:1px solid var(--border);flex-wrap:wrap;}
+.ctrl select,.ctrl input{background:var(--card);border:1px solid var(--border2);color:var(--text);
+  font-family:'Sarabun',sans-serif;font-size:13px;padding:7px 12px;border-radius:7px;outline:none;cursor:pointer;}
+.ctrl select:focus,.ctrl input:focus{border-color:var(--accent2);}
+.fbtn{padding:7px 14px;border-radius:7px;border:1px solid var(--border2);background:var(--card);color:var(--muted);
+  font-family:'Sarabun',sans-serif;font-size:12px;cursor:pointer;transition:all .15s;}
+.fbtn:hover{border-color:var(--accent2);color:var(--accent);}
+.fbtn.active{background:rgba(255,140,50,.1);border-color:var(--accent2);color:var(--accent);}
+.fbtn.ok.active{background:rgba(255,140,50,.1);border-color:rgba(255,140,50,.4);color:var(--success);}
+.fbtn.br.active{background:rgba(255,68,68,.1);border-color:rgba(255,68,68,.4);color:var(--danger);}
+.search{flex:1;min-width:160px;font-family:'IBM Plex Mono',monospace;}
+.search::placeholder{color:var(--muted);}
+.exportbtn{background:linear-gradient(135deg,var(--ok-shd),var(--accent2));color:#100;border:none;border-radius:7px;
+  font-family:'Sarabun',sans-serif;font-size:12px;font-weight:700;padding:8px 14px;cursor:pointer;}
+
+main{padding:14px 20px 60px;}
+.floor-grp{margin-bottom:22px;}
+.floor-hdr{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.floor-lbl{font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:700;color:var(--accent);
+  background:rgba(255,140,50,.08);border:1px solid rgba(255,140,50,.2);border-radius:7px;padding:5px 14px;flex-shrink:0;}
+.floor-div{flex:1;height:1px;background:var(--border);}
+.floor-cnt{font-size:11px;color:var(--muted);font-family:'IBM Plex Mono',monospace;white-space:nowrap;}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;}
+
+.card{position:relative;border-radius:11px;padding:12px 12px 10px;cursor:pointer;transition:transform .12s;
+  border:1px solid var(--border2);background:linear-gradient(160deg,var(--un-top),var(--un-mid));}
+.card:hover{transform:translateY(-2px);}
+.card.ok{background:linear-gradient(160deg,var(--ok-top),var(--ok-mid));border-color:var(--ok-bdr);box-shadow:0 0 14px -6px var(--ok-glow);}
+.card.br{background:linear-gradient(160deg,var(--br-top),var(--br-mid));border-color:var(--br-bdr);box-shadow:0 0 14px -6px var(--br-glow);}
+.card .id{font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:13px;color:#fff;}
+.card .zn{display:inline-block;font-size:10px;font-family:'IBM Plex Mono',monospace;background:rgba(255,255,255,.08);
+  border-radius:5px;padding:1px 6px;margin-left:5px;color:var(--muted);}
+.card .loc{font-size:11.5px;color:var(--text);margin-top:6px;line-height:1.35;min-height:30px;}
+.card .badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;border-radius:100px;
+  padding:3px 9px;margin-top:8px;}
+.card.ok .badge{background:rgba(255,140,50,.15);color:var(--ok-txt);}
+.card.br .badge{background:rgba(255,68,68,.15);color:var(--br-txt);}
+.card.un .badge{background:rgba(160,128,96,.15);color:var(--un-txt);}
+.dot{width:6px;height:6px;border-radius:50%;}
+.card.ok .dot{background:var(--ok-txt);box-shadow:0 0 6px var(--ok-txt);}
+.card.br .dot{background:var(--br-txt);box-shadow:0 0 6px var(--br-txt);animation:blink 1s infinite;}
+.card.un .dot{background:var(--un-txt);}
+
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(3px);z-index:200;
+  align-items:center;justify-content:center;padding:16px;}
+.modal-bg.show{display:flex;}
+.modal{background:var(--card);border:1px solid var(--border2);border-radius:14px;max-width:460px;width:100%;
+  max-height:88vh;overflow-y:auto;padding:20px;}
+.modal h2{font-size:16px;color:#fff;margin-bottom:2px;}
+.modal .sub{font-size:12px;color:var(--muted);margin-bottom:16px;font-family:'IBM Plex Mono',monospace;}
+.chk-item{border:1px solid var(--border2);border-radius:9px;padding:10px 12px;margin-bottom:9px;}
+.chk-item label{font-size:12.5px;font-weight:600;color:var(--text);display:block;margin-bottom:7px;}
+.chk-opts{display:flex;gap:6px;flex-wrap:wrap;}
+.chk-opt{flex:1;min-width:70px;text-align:center;padding:7px 8px;border-radius:7px;border:1px solid var(--border2);
+  background:var(--surface);font-size:11.5px;cursor:pointer;color:var(--muted);transition:all .12s;}
+.chk-opt.sel-pass{background:rgba(255,140,50,.12);border-color:var(--accent2);color:var(--ok-txt);}
+.chk-opt.sel-fail{background:rgba(255,68,68,.12);border-color:var(--br-bdr);color:var(--br-txt);}
+.batt-row{display:flex;align-items:center;gap:8px;margin-top:8px;}
+.batt-row input{width:80px;background:var(--surface);border:1px solid var(--border2);color:var(--text);
+  border-radius:7px;padding:6px 9px;font-family:'IBM Plex Mono',monospace;font-size:12px;}
+.batt-row span{font-size:11px;color:var(--muted);}
+.overall{margin-top:14px;padding:12px;border-radius:9px;text-align:center;font-weight:700;font-size:13px;
+  border:1px solid var(--border2);background:var(--surface);}
+.overall.ok{color:var(--ok-txt);border-color:var(--ok-bdr);}
+.overall.br{color:var(--br-txt);border-color:var(--br-bdr);}
+textarea{width:100%;background:var(--surface);border:1px solid var(--border2);color:var(--text);border-radius:8px;
+  padding:9px;font-family:'Sarabun',sans-serif;font-size:12.5px;margin-top:10px;resize:vertical;min-height:50px;}
+.modal-actions{display:flex;gap:10px;margin-top:16px;}
+.btn-save{flex:1;background:linear-gradient(135deg,var(--ok-shd),var(--accent2));color:#fff;border:none;
+  border-radius:8px;padding:11px;font-family:'Sarabun',sans-serif;font-weight:700;font-size:13.5px;cursor:pointer;}
+.btn-cancel{background:transparent;border:1px solid var(--border2);color:var(--muted);border-radius:8px;
+  padding:11px 16px;font-family:'Sarabun',sans-serif;font-size:13px;cursor:pointer;}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--accent2);
+  color:var(--accent);padding:10px 20px;border-radius:9px;font-size:13px;z-index:300;display:none;}
+.empty{text-align:center;padding:60px 20px;color:var(--muted);}
+::-webkit-scrollbar{width:8px;height:8px;}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px;}
+@media(max-width:640px){.hdr h1{font-size:13px;}.grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));}}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <div class="hdr-left">
+    <div class="logo">FHC</div>
+    <div>
+      <h1>FHC <span>Monitoring Dashboard</span></h1>
+      <div class="hdr-sub">ตู้ดับเพลิง (Fire Hose Cabinet) · ตึกภูมิสิริมังคลานุสรณ์ รพ.จุฬาลงกรณ์</div>
+    </div>
+  </div>
+  <div class="hdr-right">
+    <div class="live-badge" id="syncBadge"><div class="live-dot" id="syncDot"></div><span id="syncText">LOCAL ONLY</span></div>
+    <div class="clock" id="clock">--:--:--</div>
+  </div>
+</div>
+
+<div class="statbar">
+  <div class="stat total"><div class="n" id="statTotal">0</div><div class="l">ทั้งหมด</div></div>
+  <div class="stat ok"><div class="n" id="statOk">0</div><div class="l">ปกติ</div></div>
+  <div class="stat br"><div class="n" id="statBr">0</div><div class="l">ชำรุด</div></div>
+  <div class="stat un"><div class="n" id="statUn">0</div><div class="l">ยังไม่ตรวจ</div></div>
+</div>
+
+<div class="ctrl">
+  <input class="search" id="searchBox" placeholder="ค้นหาเลขตู้ / ตำแหน่ง..." oninput="applyFilter()">
+  <select id="floorSel" onchange="applyFilter()"><option value="">ทุกชั้น</option></select>
+  <select id="zoneSel" onchange="applyFilter()">
+    <option value="">ทุกโซน</option><option value="A">โซน A</option><option value="B">โซน B</option>
+    <option value="C">โซน C</option><option value="D">โซน D</option>
+  </select>
+  <button class="fbtn ok" id="fbtnOk" onclick="toggleStatusFilter('ok',this)">ปกติ</button>
+  <button class="fbtn br" id="fbtnBr" onclick="toggleStatusFilter('br',this)">ชำรุด</button>
+  <button class="fbtn" id="fbtnUn" onclick="toggleStatusFilter('un',this)">ยังไม่ตรวจ</button>
+  <button class="exportbtn" onclick="exportCSV()">⬇ Export CSV</button>
+</div>
+
+<main id="mainArea"></main>
+
+<div class="modal-bg" id="modalBg" onclick="closeOut(event)">
+  <div class="modal" id="modal">
+    <h2 id="mTitle">-</h2>
+    <div class="sub" id="mSub">-</div>
+
+    <div class="chk-item">
+      <label>1. สภาพตัวตู้ (บาน/กระจก/สนิม/กุญแจ-Break Glass)</label>
+      <div class="chk-opts" id="chkCabinet">
+        <div class="chk-opt" onclick="setChk('cabinet','pass',this)">✓ ปกติ</div>
+        <div class="chk-opt" onclick="setChk('cabinet','fail',this)">✕ ชำรุด</div>
+      </div>
+    </div>
+
+    <div class="chk-item">
+      <label>2. สายฉีดน้ำดับเพลิง (ไม่ฉีกขาด/ต่อแน่น)</label>
+      <div class="chk-opts" id="chkHose">
+        <div class="chk-opt" onclick="setChk('hose','pass',this)">✓ ปกติ</div>
+        <div class="chk-opt" onclick="setChk('hose','fail',this)">✕ ชำรุด</div>
+      </div>
+    </div>
+
+    <div class="chk-item">
+      <label>3. หัวฉีดน้ำ (Nozzle) ใช้งานได้/ไม่อุดตัน</label>
+      <div class="chk-opts" id="chkNozzle">
+        <div class="chk-opt" onclick="setChk('nozzle','pass',this)">✓ ปกติ</div>
+        <div class="chk-opt" onclick="setChk('nozzle','fail',this)">✕ ชำรุด</div>
+      </div>
+    </div>
+
+    <div class="chk-item">
+      <label>4. วาล์วน้ำดับเพลิง เปิด-ปิดได้/ไม่รั่วซึม</label>
+      <div class="chk-opts" id="chkValve">
+        <div class="chk-opt" onclick="setChk('valve','pass',this)">✓ ปกติ</div>
+        <div class="chk-opt" onclick="setChk('valve','fail',this)">✕ ชำรุด</div>
+      </div>
+    </div>
+
+    <div class="chk-item">
+      <label>5. แรงดันน้ำ (Pressure Gauge) อยู่ในเกณฑ์</label>
+      <div class="chk-opts" id="chkPressure">
+        <div class="chk-opt" onclick="setChk('pressure','pass',this)">✓ ผ่าน</div>
+        <div class="chk-opt" onclick="setChk('pressure','fail',this)">✕ ไม่ผ่าน</div>
+      </div>
+      <div class="batt-row"><input type="number" id="pressVal" placeholder="0" min="0" step="0.1"><span>แรงดันที่วัดได้ (Bar, ถ้ามี)</span></div>
+    </div>
+
+    <div class="overall" id="overallBox">กรุณาตรวจครบทั้ง 5 ข้อ</div>
+    <textarea id="noteBox" placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)"></textarea>
+
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal()">ยกเลิก</button>
+      <button class="btn-save" onclick="saveCheck()">บันทึกผล PM</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script>
+/* ===== RAW DATA: [id, asset, status(0=ยังไม่ตรวจ,1=ปกติ,2=ชำรุด), location, zone, floor, dept] ===== */
+const RAW = 
+[["1FHC-B4/1", "0225604210017030275", 0, "หน้าบันได 16", "", "B4", "Fire Hose Cabinet"], ["1FHC-B4/2", "0225604210017030102", 0, "หน้าโถงลิฟท์", "", "B4", "Fire Hose Cabinet"], ["1FHC-B4/3", "0225604210017030274", 0, "หน้าบันได 13", "", "B4", "Fire Hose Cabinet"], ["1FHC-B4/4", "0225604210017030101", 0, "หน้าบันได 2", "", "B4", "Fire Hose Cabinet"], ["1FHC-B4/5", "0225604210017030276", 0, "หน้าห้องเก็บของ 4", "", "B4", "Fire Hose Cabinet"], ["1FHC-B4/6", "0225604210017030273", 0, "หน้าบันได 8", "", "B4", "Fire Hose Cabinet"], ["1FHC-B4/7", "0225604210017030103", 0, "หน้าบันได 10", "", "B4", "Fire Hose Cabinet"], ["1FHC-B3/4", "0225604210017030273", 0, "โถงลิฟท์บริการ", "", "B3", "Fire Hose Cabinet"], ["1FHC-B3/5", "0225604210017030270", 0, "หน้าบันได 8", "", "B3", "Fire Hose Cabinet"], ["1FHC-B3/6", "0225604210017030267", 0, "หน้าบันได 10", "", "B3", "Fire Hose Cabinet"], ["1FHC-B3/7", "0225604210017030014", 0, "หน้าลิฟท์", "", "B3", "Fire Hose Cabinet"], ["1FHC-B3/1", "0225604210017030269", 0, "หน้าบันได 16", "", "B3", "Fire Hose Cabinet"], ["1FHC-B3/2", "0225604210017030272", 0, "หน้าบันได 13", "", "B3", "Fire Hose Cabinet"], ["1FHC-B3/3", "0225604210017030268", 0, "หน้าบันได 2", "", "B3", "Fire Hose Cabinet"], ["1FHC-B2/3", "0225604210017030265", 0, "หน้าบันได 13", "", "B2", "Fire Hose Cabinet"], ["1FHC-B2/4", "0225604210017030019", 0, "หน้าบันได 2", "", "B2", "Fire Hose Cabinet"], ["1FHC-B2/5", "0225604210017030020", 0, "โถงลิฟท์บริการ", "", "B2", "Fire Hose Cabinet"], ["1FHC-B2/1", "0225604210017030263", 0, "หน้าบันได 16", "", "B2", "Fire Hose Cabinet"], ["1FHC-B2/2", "0225604210017030266", 0, "หน้าโถงลิฟท์", "", "B2", "Fire Hose Cabinet"], ["1FHC-B2/6", "0225604210017030264", 0, "หน้าบันได 8", "", "B2", "Fire Hose Cabinet"], ["1FHC-B1/1", "0225604210017030257", 0, "ทางลาด 3", "", "B1", "Fire Hose Cabinet"], ["1FHC-B1/2", "0225604210017030261", 0, "หน้าห้องคลังยา 2", "", "B1", "Fire Hose Cabinet"], ["1FHC-B1/3", "0225604210017030024", 0, "ทางเดินหน้าห้องนอนเวร", "", "B1", "Fire Hose Cabinet"], ["1FHC-B1/4", "0225604210017030259", 0, "หน้าห้องเครื่องปรับอากาศ 1", "", "B1", "Fire Hose Cabinet"], ["1FHC-B1/5", "0225604210017030260", 0, "หน้าบันได 2", "", "B1", "Fire Hose Cabinet"], ["1FHC-B1/6", "0225604210017030258", 0, "โถงลิฟท์ดับเพลิง", "", "B1", "Fire Hose Cabinet"], ["1FHC-B1/7", "0225604210017030255", 0, "หน้าห้องน้ำ", "", "B1", "Fire Hose Cabinet"], ["1FHC-B1/8", "0225604210017030256", 0, "ทางลาด 1", "", "B1", "Fire Hose Cabinet"], ["1FHC-B1/9", "0225604210017030262", 0, "หน้าบันได 10", "", "B1", "Fire Hose Cabinet"], ["2FHC-1/1", "022560421001730277", 0, "หน้าบันได 1", "C", "1", "Fire Hose Cabinet"], ["2FHC-1/2", "0225604210017030278", 0, "หน้าห้องเวชระเบียน", "C", "1", "Fire Hose Cabinet"], ["1FHC-1/1", "0225604210017030254", 0, "ทางเดินหน้าห้องนอนเวร", "", "1", "Fire Hose Cabinet"], ["1FHC-1/2", "0225604210017030253", 0, "หน้าบันได 2", "", "1", "Fire Hose Cabinet"], ["1FHC-1/3", "0225604210017030248", 0, "หน้าบันได 1", "", "1", "Fire Hose Cabinet"], ["1FHC-1/4", "025604210017030247", 0, "ทางเดินหน้าห้องผ่าตัด", "", "1", "Fire Hose Cabinet"], ["1FHC-1/5", "0225604210017030252", 0, "หน้าบันได 4", "", "1", "Fire Hose Cabinet"], ["1FHC-1/6", "0225604210017030249", 0, "โถงลิฟท์ดับเพลิง", "", "1", "Fire Hose Cabinet"], ["1FHC-1/7", "0225604210017030250", 0, "ทางเดิน 1", "", "1", "Fire Hose Cabinet"], ["1FHC-1/8", "0225604210017030251", 0, "โถงพักรอ", "", "1", "Fire Hose Cabinet"], ["2FHC-1/3", "0225604210017030280", 0, "หน้าห้องจ่ายยา", "C", "1", "Fire Hose Cabinet"], ["2FHC-1/4", "0225604210017030279", 0, "โถงทางเดิน", "C", "1", "Fire Hose Cabinet"], ["1FHC-M/2", "0225604210017030240", 0, "หน้าบันได 1", "", "MZ", "Fire Hose Cabinet"], ["1FHC-M/3", "0225604210017030243", 0, "หน้าบันได 2", "", "MZ", "Fire Hose Cabinet"], ["1FHC-M/6", "0225604210017030245", 0, "โถงพักรอ", "", "MZ", "Fire Hose Cabinet"], ["1FHC-M/7", "0225604210017030246", 0, "หน้าห้องเก็บของสกปรก", "", "MZ", "Fire Hose Cabinet"], ["1FHC-M/8", "0225604210017030046", 0, "ลาน Cooling", "", "MZ", "Fire Hose Cabinet"], ["1FHC-M/1", "0225604210017030242", 0, "หน้าห้องอาหาร", "", "MZ", "Fire Hose Cabinet"], ["1FHC-M/4", "0225604210017030244", 0, "โถงลิฟท์ดับเพลิง", "", "MZ", "Fire Hose Cabinet"], ["1FHC-M/5", "0225604210017030241", 0, "หน้าบันได 4", "", "MZ", "Fire Hose Cabinet"], ["2FHC-M/1", "0225604210017030281", 0, "โถงลิฟท์", "C", "MZ", "Fire Hose Cabinet"], ["2FHC-M/2", "0225604210017030282", 0, "หน้าโถงลิฟท์", "C", "MZ", "Fire Hose Cabinet"], ["2FHC-M/3", "0225604210017030283", 0, "หน้าห้องสาขาวิชาอารยุศาสร์", "C", "MZ", "Fire Hose Cabinet"], ["1FHC-2/1", "0225604210017030236", 0, "หน้าห้องน้ำ", "", "2", "Fire Hose Cabinet"], ["1FHC-2/2", "0225604210017030232", 0, "ทางเดินหน้าห้อง CT", "", "2", "Fire Hose Cabinet"], ["1FHC-2/3", "0225604210017030235", 0, "หน้าบันได 4", "", "2", "Fire Hose Cabinet"], ["1FHC-2/4", "0225604210017030237", 0, "โถงลิฟท์ดับเพลิง", "", "2", "Fire Hose Cabinet"], ["1FHC-2/5", "0225604210017030239", 0, "หน้าบันได 5", "", "2", "Fire Hose Cabinet"], ["1FHC-2/6", "0225604210017030834", 0, "โถงพักรอเวชศาสตร์", "", "2", "Fire Hose Cabinet"], ["1FHC-2/7", "0225604210017030233", 0, "ทางเดินหน้าห้องนอนเวร", "", "2", "Fire Hose Cabinet"], ["1FHC-2/8", "", 0, "หน้าห้องสื่อสาร 1", "", "2", "Fire Hose Cabinet"], ["1FHC-2/9", "025604210017030238", 0, "หน้าบันได 3", "", "2", "Fire Hose Cabinet"], ["2FHC-2/1", "0225604210017030284", 0, "หน้าบันได 1", "C", "2", "Fire Hose Cabinet"], ["2FHC-2/2", "0225604210017030285", 0, "หน้าบันได 2", "C", "2", "Fire Hose Cabinet"], ["2FHC-2/3", "0225604210017030286", 0, "โถงลิฟท์บริการ", "C", "2", "Fire Hose Cabinet"], ["1FHC-3/1", "0225604210017030218", 0, "หน้าห้องน้ำ", "", "3", "Fire Hose Cabinet"], ["1FHC-3/10", "0225604210017030214", 0, "", "", "3", "Fire Hose Cabinet"], ["1FHC-3/2", "0225604210017030219", 0, "หน้าห้องนอนเวร", "", "3", "Fire Hose Cabinet"], ["1FHC-3/3", "0225604210017030212", 0, "หน้าบันได 1", "", "3", "Fire Hose Cabinet"], ["1FHC-3/4", "0225604210017030290", 0, "หน้าบันไดหนีไฟ 4", "", "3", "Fire Hose Cabinet"], ["1FHC-3/5", "0225604210017030217", 0, "โถงลิฟท์ 4-7", "", "3", "Fire Hose Cabinet"], ["1FHC-3/6", "0225604210017030211", 0, "ทางเดินรอบนอกห้องเก็บเครื่องมือ", "", "3", "Fire Hose Cabinet"], ["1FHC-3/7", "0225604210017030213", 0, "ทางเดินหน้าห้องเก็บกากเคมี", "", "3", "Fire Hose Cabinet"], ["1FHC-3/8", "0225604210017030215", 0, "ทางเดินหน้าห้องตรวจ", "", "3", "Fire Hose Cabinet"], ["1FHC-3/9", "0225604210017030215", 0, "หน้าบันได 3", "", "3", "Fire Hose Cabinet"], ["2FHC-3/1", "0225604210017030290", 0, "หน้าบันได 1", "C", "3", "Fire Hose Cabinet"], ["2FHC-3/2", "0225604210017030288", 0, "หน้าบันได 2", "C", "3", "Fire Hose Cabinet"], ["2FHC-3/3", "0225604210017030289", 0, "หน้าห้องไฟฟ้า", "C", "3", "Fire Hose Cabinet"], ["2FHC-3/4", "0225604210017030290", 0, "โถงลิฟท์บริการ", "C", "3", "Fire Hose Cabinet"], ["1FHC-4/1", "0225604210017030228", 0, "หน้าห้อง Medical Processing", "", "4", "Fire Hose Cabinet"], ["1FHC-4/10", "0225604210017030226", 0, "บันไดหนีไฟ 3", "", "4", "Fire Hose Cabinet"], ["1FHC-4/2", "0225604210017030220", 0, "หน้าห้องแยกพิเศษ 4", "", "4", "Fire Hose Cabinet"], ["1FHC-4/3", "0225604210017030221", 0, "ทางเดินตรงข้ามบันไดหนีไฟ 1", "", "4", "Fire Hose Cabinet"], ["1FHC-4/4", "0225604210017030222", 0, "โถงลิฟท์ 4-7", "", "4", "Fire Hose Cabinet"], ["1FHC-4/5", "0225604210017030227", 0, "ข้างบันไดหนีไฟ 4", "", "4", "Fire Hose Cabinet"], ["1FHC-4/6", "0225604210017030071", 0, "บริเวณห้องเก็บของ-โถงพักรอ", "", "4", "Fire Hose Cabinet"], ["1FHC-4/7", "0225604210017030223", 0, "ข้างโถงพักรอ", "", "4", "Fire Hose Cabinet"], ["1FHC-4/8", "0225604210017030225", 0, "หน้าห้อง CATH LAB 4", "", "4", "Fire Hose Cabinet"], ["1FHC-4/9", "0225604210017030224", 0, "ทางเดิน CATH LAB UNIT", "", "4", "Fire Hose Cabinet"], ["2FHC-4/1", "0225604210017030292", 0, "หน้าบันได 1", "C", "4", "Fire Hose Cabinet"], ["2FHC-4/2", "0225604210017030293", 0, "หน้าบันได 2", "C", "4", "Fire Hose Cabinet"], ["2FHC-4/3", "0225604210017030294", 0, "หน้าห้องไฟฟ้า", "C", "4", "Fire Hose Cabinet"], ["2FHC-4/4", "0225604210017030291", 0, "โถงลิฟท์บริการ", "C", "4", "Fire Hose Cabinet"], ["1FHC-5/1", "0225604210017030230", 0, "ทางเดิน 3 ใกล้ทางเชื่อม", "", "5", "Fire Hose Cabinet"], ["1FHC-5/10", "0225604210017030006", 0, "บันไดหนีไฟ 3", "", "5", "Fire Hose Cabinet"], ["1FHC-5/2", "0225604210017030231", 0, "ห้องพักคอยญาติ", "", "5", "Fire Hose Cabinet"], ["1FHC-5/3", "0225604210017030004", 0, "หลังห้องรับ-ส่ง ชิ้นเนื้อ", "", "5", "Fire Hose Cabinet"], ["1FHC-5/7", "0225604210017030008", 0, "หน้าห้องผ่าตัด-L3", "", "5", "Fire Hose Cabinet"], ["1FHC-5/8", "0225604210017030007", 0, "หน้าห้องเก็บของใกล้นอนเวร 4", "", "5", "Fire Hose Cabinet"], ["1FHC-5/9", "0225604210017030005", 0, "ห้องล้างเครื่องมือหลังห้องผ่าตัด-M6", "", "5", "Fire Hose Cabinet"], ["1FHC-5/4", "0225604210017030079", 0, "โถงลิฟท์ 4-7", "", "5", "Fire Hose Cabinet"], ["1FHC-5/5", "0225604210017030229", 0, "ข้างบันไดหนีไฟ 4", "", "5", "Fire Hose Cabinet"], ["1FHC-5/6", "0225604210017030009", 0, "ทางเดินสะอาด 2", "", "5", "Fire Hose Cabinet"], ["2FHC-5/1", "0225604210017030295", 0, "หน้าบันได 1", "C", "5", "Fire Hose Cabinet"], ["2FHC-5/2", "0225604210017030296", 0, "หน้าบันได 2", "C", "5", "Fire Hose Cabinet"], ["2FHC-5/3", "0225604210017030297", 0, "หน้าห้องไฟฟ้า", "C", "5", "Fire Hose Cabinet"], ["2FHC-5/4", "0225604210017030298", 0, "โถงลิฟท์บริการ", "C", "5", "Fire Hose Cabinet"], ["1FHC-6/1", "0225604210017030013", 0, "ทางเดิน 3 ตรงข้ามห้องขนส่ง", "", "6", "Fire Hose Cabinet"], ["1FHC-6/10", "0225604210017030020", 0, "หน้าห้องผ่าตัด-L5", "", "6", "Fire Hose Cabinet"], ["1FHC-6/11", "0225604210017030021", 0, "หน้าห้องผ่าตัด-M7", "", "6", "Fire Hose Cabinet"], ["1FHC-6/12", "0225604210017030019", 0, "บันไดหนีไฟ 3", "", "6", "Fire Hose Cabinet"], ["1FHC-6/4", "0225604210017030016", 0, "หลังห้องรับ-ส่ง ชิ้นเนื้อ", "", "6", "Fire Hose Cabinet"], ["1FHC-6/5", "0225604210017030012", 0, "โถงลิฟท์ดับเพลิง", "", "6", "Fire Hose Cabinet"], ["1FHC-6/6", "0225604210017030022", 0, "ข้างบันไดหนีไฟ 4", "", "6", "Fire Hose Cabinet"], ["1FHC-6/7", "0225604210017030015", 0, "Stretcher Holding", "", "6", "Fire Hose Cabinet"], ["1FHC-6/8", "0225604210017030017", 0, "ข้างลิฟท์ L38", "", "6", "Fire Hose Cabinet"], ["1FHC-6/9", "0225604210017030018", 0, "หน้าห้องพัก/ทำงานแพทย์", "", "6", "Fire Hose Cabinet"], ["1FHC-6/13", "0225604210017030011", 0, "ส่วนกลาง", "", "6", "Fire Hose Cabinet"], ["1FHC-6/2", "0225604210017030014", 0, "หน้าห้องศูนย์เครื่องมือกลาง", "", "6", "Fire Hose Cabinet"], ["1FHC-6/3", "0225604210017030010", 0, "ห้องเปลี่ยนเสื้อผ้าหญิง ( I / 6 )", "", "6", "Fire Hose Cabinet"], ["2FHC-6/1", "0225604210017030299", 0, "โถงลิฟท์บริการ", "C", "6", "Fire Hose Cabinet"], ["2FHC-6/2", "0225604210017030300", 0, "หน้าห้องธุรการ", "C", "6", "Fire Hose Cabinet"], ["2FHC-6/3", "0225604210017030301", 0, "หน้าห้องไฟฟ้า", "C", "6", "Fire Hose Cabinet"], ["2FHC-6/4", "0225604210017030302", 0, "ส่วนกลาง", "C", "6", "Fire Hose Cabinet"], ["1FHC-7/1", "022560421001700025", 0, "ทางเดินหน้าห้องขนส่ง", "", "7", "Fire Hose Cabinet"], ["1FHC-7/7", "0225604210017030031", 0, "หน้าห้องผ่าตัด-L2", "", "7", "Fire Hose Cabinet"], ["1FHC-7/8", "0225604210017030029", 0, "ทางเดินหน้าห้อง MRI", "", "7", "Fire Hose Cabinet"], ["1FHC-7/9", "022560421001700029", 0, "หน้าบันได 3", "", "7", "Fire Hose Cabinet"], ["1FHC-7/2", "0225604210017030026", 0, "หน้าห้องน้ำ", "", "7", "Fire Hose Cabinet"], ["1FHC-7/3", "0225604210017030027", 0, "หน้าบันได 4", "", "7", "Fire Hose Cabinet"], ["1FHC-7/4", "0225604210017030023", 0, "โถงลิฟท์ดับเพลิง", "", "7", "Fire Hose Cabinet"], ["1FHC-7/5", "022560421001700022", 0, "ทางเดินโถงลิฟท์บริการ", "", "7", "Fire Hose Cabinet"], ["1FHC-7/6", "0225604210017030028", 0, "ทางเดินหน้าห้องเปลี่ยนเสื้อ", "", "7", "Fire Hose Cabinet"], ["2FHC-7/1", "0225604210017030303", 0, "หน้าบันได 1", "C", "7", "Fire Hose Cabinet"], ["2FHC-7/2", "0225604210017030304", 0, "หน้าบันได 2", "C", "7", "Fire Hose Cabinet"], ["2FHC-7/3", "0225604210017030305", 0, "หน้าห้องไฟฟ้า", "C", "7", "Fire Hose Cabinet"], ["2FHC-7/4", "0225604210017030306", 0, "โถงลิฟท์บริการ", "C", "7", "Fire Hose Cabinet"], ["1FHC-8/1", "0225604210017030034", 0, "หน้าห้องน้ำ", "", "8", "Fire Hose Cabinet"], ["1FHC-8/10", "0225604210017030040", 0, "ทางเดินห้องผ่าตัด", "", "8", "Fire Hose Cabinet"], ["1FHC-8/11", "0225604210017030042", 0, "หน้าบันได", "", "8", "Fire Hose Cabinet"], ["1FHC-8/2", "0225604210017030033", 0, "ทางเดินหน้าบันได 1", "", "8", "Fire Hose Cabinet"], ["1FHC-8/3", "0225604210017030037", 0, "หน้าห้องพักคนไข้รวม", "", "8", "Fire Hose Cabinet"], ["1FHC-8/4", "0225604210017030038", 0, "หน้าบันได 4", "", "8", "Fire Hose Cabinet"], ["1FHC-8/5", "0225604210017030032", 0, "โถงลิฟท์ดับเพลิง", "", "8", "Fire Hose Cabinet"], ["1FHC-8/6", "0225604210017030036", 0, "โถงลิฟท์บริการ", "", "8", "Fire Hose Cabinet"], ["1FHC-8/7", "0225604210017030035", 0, "ทางเดินหน้าห้องพักเจ้าหน้าที่", "", "8", "Fire Hose Cabinet"], ["1FHC-8/8", "0225604210017030039", 0, "หน้าห้องผ่าตัด-M11", "", "8", "Fire Hose Cabinet"], ["1FHC-8/9", "0225604210017030041", 0, "หน้าห้องผ่าตัด M11", "", "8", "Fire Hose Cabinet"], ["2FHC-8/1", "0225604210017030310", 0, "หน้าบันได 1", "C", "8", "Fire Hose Cabinet"], ["2FHC-8/2", "0225604210017030307", 0, "หน้าบันได 2", "C", "8", "Fire Hose Cabinet"], ["2FHC-8/3", "0225604210017030308", 0, "หน้าห้องไฟฟ้า", "C", "8", "Fire Hose Cabinet"], ["2FHC-8/4", "0225604210017030309", 0, "โถงลิฟท์บริการ", "C", "8", "Fire Hose Cabinet"], ["1FHC-9/9", "0225604210017030048", 0, "โถงห้องคลอด", "", "9", "Fire Hose Cabinet 9/9"], ["1FHC-9/1", "0225604210017030044", 0, "ทางเดินหน้าบันได 1", "", "9", "Fire Hose Cabinet 9/1"], ["1FHC-9/10", "0225604210017030047", 0, "โถงหน้าห้องผ่าตัดคลอด", "", "9", "Fire Hose Cabinet 9/10"], ["1FHC-9/2", "0225604210017030043", 0, "หน้าห้องน้ำ", "", "9", "Fire Hose Cabinet 9/2"], ["1FHC-9/3", "0225604210017030045", 0, "ห้องพักคนงาน", "", "9", "Fire Hose Cabinet 9/3"], ["1FHC-9/4", "0225604210017030050", 0, "ห้องพักคนงาน", "", "9", "Fire Hose Cabinet 9/4"], ["1FHC-9/5", "0225604210017030052", 0, "หน้าบันได 4", "", "9", "Fire Hose Cabinet 9/5"], ["1FHC-9/6", "0225604210017030351", 0, "โถงลิฟท์ดับเพลิง", "", "9", "Fire Hose Cabinet 9/6"], ["1FHC-9/7", "0225604210017030049", 0, "ทางเดินโถงลิฟท์บริการ", "", "9", "Fire Hose Cabinet 9/7"], ["1FHC-9/8", "0225604210017030046", 0, "หน้าห้องอาหารคนไข้", "", "9", "Fire Hose Cabinet 9/8"], ["2FHC-9/1", "0225604210017030311", 0, "หน้าบันได 1", "C", "9", "Fire Hose Cabinet 9/1"], ["2FHC-9/2", "0225604210017030312", 0, "หน้าบันได 2", "C", "9", "Fire Hose Cabinet 9/2"], ["2FHC-9/3", "0225604210017030313", 0, "หน้าห้องไฟฟ้า", "C", "9", "Fire Hose Cabinet 9/3"], ["2FHC-9/4", "0225604210017030314", 0, "ส่วนกลาง", "C", "9", "Fire Hose Cabinet 9/4"], ["2FHC-10/3", "0225604210017030317", 0, "โถงลิฟท์บริการ", "C", "10", "Fire Hose Cabinet"], ["1FHC-10/1", "0225604210017030054", 0, "ทางเดินหน้าห้องขนส่ง", "", "10", "Fire Hose Cabinet"], ["1FHC-10/2", "0225604210017030053", 0, "หน้าห้องน้ำ", "", "10", "Fire Hose Cabinet"], ["1FHC-10/3", "0225604210017030055", 0, "หน้าห้องแยกติดเชื้อ 2", "", "10", "Fire Hose Cabinet"], ["1FHC-10/4", "0225604210017030056", 0, "ทางเดินหน้าห้องแยกสะอาด", "", "10", "Fire Hose Cabinet"], ["1FHC-10/5", "0225604210017030064", 0, "หน้าบันได 4", "", "10", "Fire Hose Cabinet"], ["1FHC-10/6", "0225604210017030058", 0, "โถงลิฟท์ดับเพลิง", "", "10", "Fire Hose Cabinet"], ["1FHC-10/7", "0225604210017030059", 0, "ทางเดินโถงลิฟท์บริการ", "", "10", "Fire Hose Cabinet"], ["1FHC-10/8", "0225604210017030063", 0, "ทางเดินศูนย์โรคระบบหายใจ", "", "10", "Fire Hose Cabinet"], ["1FHC-10/9", "0225604210017030057", 0, "ทางเดินหน้าห้องประมวลผล", "", "10", "Fire Hose Cabinet"], ["1FHC-10/10", "0225604210017030062", 0, "หน้าห้องนอนเวร", "", "10", "Fire Hose Cabinet"], ["1FHC-10/11", "0225604210017030060", 0, "หน้าห้อง SCOPE 4", "", "10", "Fire Hose Cabinet"], ["1FHC-10/12", "0225604210017030061", 0, "หน้าบันได 3", "", "10", "Fire Hose Cabinet"], ["2FHC-10/1", "0225604210017030315", 0, "หน้าบันได 1", "C", "10", "Fire Hose Cabinet"], ["2FHC-10/2", "0225604210017030316", 0, "หน้าห้องไฟฟ้า", "C", "10", "Fire Hose Cabinet"], ["1FHC-11/10", "0225604210017030073", 0, "ทางเดินรอบนอกข้างห้องนอนเวร (Q-R/2-3)", "", "11", "Fire Hose Cabinet"], ["1FHC-11/11", "0225604210017030072", 0, "ข้างบันไดหนีไฟ 3", "", "11", "Fire Hose Cabinet"], ["1FHC-11/2", "0225604210017030065", 0, "หน้าห้องสอนแสดง", "", "11", "Fire Hose Cabinet"], ["1FHC-11/3", "0225604210017030201", 0, "หน้าห้องเปลี่ยนเสื้อผ้า", "", "11", "Fire Hose Cabinet"], ["1FHC-11/4", "0225604210017030067", 0, "โถงลิฟท์ดับเพลิง", "", "11", "Fire Hose Cabinet"], ["1FHC-11/5", "0225604210017030074", 0, "ข้างบันไดหนีไฟ 4", "", "11", "Fire Hose Cabinet"], ["1FHC-11/6", "0225604210017030068", 0, "ข้างห้องเตรียมอาหาร", "", "11", "Fire Hose Cabinet"], ["1FHC-11/7", "022560412017030060", 0, "โถงพักผ่อน", "", "11", "Fire Hose Cabinet"], ["1FHC-11/8", "022560412017030070", 0, "ข้างห้องน้ำหญิง ( N/6 )", "", "11", "Fire Hose Cabinet"], ["1FHC-11/9", "0225604210017030071", 0, "ทางเดินรอบนอกข้างห้องสือสาร", "", "11", "Fire Hose Cabinet"], ["2FHC-11/1", "0225604210017030318", 0, "โถงลิฟท์บริการ", "C", "11", "Fire Hose Cabinet"], ["2FHC-11/2", "0225604210017030319", 0, "หน้าบันไดหนีไฟ 1", "C", "11", "Fire Hose Cabinet"], ["2FHC-11/3", "0225604210017030320", 0, "หน้าห้องไฟฟ้า", "C", "11", "Fire Hose Cabinet"], ["2FHC-11/4", "0225604210017030321", 0, "หน้าบันไดหนีไฟ 1", "C", "11", "Fire Hose Cabinet"], ["1FHC-11/1", "0225604210017030066", 0, "โถงกิจกรรมนักศึกษา", "", "11", "Fire Hose Cabinet"], ["1FHC-12/1", "0225604210017030076", 0, "ส่วนกลาง", "", "12", "Fire Hose Cabinet"], ["1FHC-12/10", "0225604210017030081", 0, "ส่วนกลาง", "", "12", "Fire Hose Cabinet"], ["1FHC-12/2", "0225604210017030075", 0, "ส่วนกลาง", "", "12", "Fire Hose Cabinet"], ["1FHC-12/3", "0225604210017030077", 0, "ส่วนกลาง", "", "12", "Fire Hose Cabinet"], ["1FHC-12/4", "0225604210017030078", 0, "ส่วนกลาง", "", "12", "Fire Hose Cabinet"], ["1FHC-12/5", "0225604210017030083", 0, "ส่วนกลาง", "", "12", "Fire Hose Cabinet"], ["1FHC-12/6", "0225604210017030200", 0, "ส่วนกลาง", "", "12", "Fire Hose Cabinet"], ["1FHC-12/7", "", 0, "ส่วนกลาง", "", "12", "Fire Hose Cabinet"], ["1FHC-12/8", "0225604210017030080", 0, "ส่วนกลาง", "", "12", "Fire Hose Cabinet"], ["1FHC-12/9", "0225604210017030082", 0, "ส่วนกลาง", "", "12", "Fire Hose Cabinet"], ["2FHC-12/1", "0225604210017030322", 0, "หน้าบันได 1", "C", "12", "Fire Hose Cabinet"], ["2FHC-12/3", "0225604210017030324", 0, "หน้าห้องไฟฟ้า", "C", "12", "Fire Hose Cabinet"], ["2FHC-12/4", "0225604210017030325", 0, "โถงลิฟท์บริการ", "C", "12", "Fire Hose Cabinet"], ["2FHC-12/2", "0225604210017030323", 0, "หน้าบันได 2", "C", "12", "Fire Hose Cabinet"], ["1FHC-13/1", "0225604210017300086", 0, "ทางเดินหน้าห้องเตรียมอาหาร", "", "13", "Fire Hose Cabinet"], ["1FHC-13/10", "0225604210017030084", 0, "ห้องอาหารเจ้าหน้าที่", "", "13", "Fire Hose Cabinet"], ["1FHC-13/11", "", 0, "ส่วนกลาง", "", "13", "Fire Hose Cabinet"], ["1FHC-13/8", "0225604210017030092", 0, "ทางเดินหน้าบันไดลงชั้น12", "", "13", "Fire Hose Cabinet"], ["1FHC-13/9", "0225604210017030090", 0, "หน้าห้องอาหาร 2", "", "13", "Fire Hose Cabinet"], ["2FHC-13/1", "0225604210017030329", 0, "หน้าบันได 1", "C", "13", "Fire Hose Cabinet"], ["1FHC-13/2", "0225604210017030085", 0, "ทางเดินหน้าห้องอเนกประสงค์ 1", "", "13", "Fire Hose Cabinet"], ["1FHC-13/3", "0225604210017030088", 0, "ทางเดินหน้าห้องอเนกประสงค์ 2", "", "13", "Fire Hose Cabinet"], ["1FHC-13/4", "0225604210017030087", 0, "หน้าบันได 4", "", "13", "Fire Hose Cabinet"], ["1FHC-13/5", "0225604210017030093", 0, "หน้าห้องเก็บของ 2", "", "13", "Fire Hose Cabinet"], ["1FHC-13/6", "0225604210017030089", 0, "โถงลิฟท์ดับเพลิง", "", "13", "Fire Hose Cabinet"], ["1FHC-13/7", "0225604210017030091", 0, "ห้องเรียน 350-400 คน", "", "13", "Fire Hose Cabinet"], ["2FHC-13/2", "0225604210017030328", 0, "หน้าบันได 2", "C", "13", "Fire Hose Cabinet"], ["2FHC-13/3", "0225604210017030327", 0, "หน้าห้องไฟฟ้า", "C", "13", "Fire Hose Cabinet"], ["2FHC-13/4", "0225604210017030326", 0, "โถงลิฟท์บริการ", "C", "13", "Fire Hose Cabinet"], ["1FHC-14/1", "0225604210017030095", 0, "ทางเดินหน้าห้องเตรียมอาหาร", "", "14", "Fire Hose Cabinet"], ["1FHC-14/2", "0225604210017030094", 0, "ทางเดินหน้าห้องอเนกประสงค์ 1", "", "14", "Fire Hose Cabinet"], ["1FHC-14/3", "0225604210017030096", 0, "ทางเดินหน้าห้องอเนกประสงค์ 2", "", "14", "Fire Hose Cabinet"], ["1FHC-14/4", "0225604210017030097", 0, "หน้าบันได 4", "", "14", "Fire Hose Cabinet"], ["1FHC-14/5", "0225604210017030100", 0, "หน้าห้องเก็บของ 2", "", "14", "Fire Hose Cabinet"], ["1FHC-14/6", "0225604210017030099", 0, "โถงลิฟท์ดับเพลิง", "", "14", "Fire Hose Cabinet"], ["1FHC-14/7", "0225604210017030098", 0, "ห้องเรียน 350-400 คน", "", "14", "Fire Hose Cabinet"], ["1FHC-14/8", "0225604210017030203", 0, "ทางเดิน", "", "14", "Fire Hose Cabinet"], ["2FHC-14/1", "0225604210017030310", 0, "ห้องเครื่องบ่อธาราบำบัด", "C", "14", "Fire Hose Cabinet"], ["2FHC-14/2", "0225604210017030330", 0, "โถงพักรอ", "C", "14", "Fire Hose Cabinet"], ["1FHC-15/1", "0225604210017030150", 0, "ทางเดินส่วนกลาง", "", "15", "Fire Hose Cabinet"], ["1FHC-15/2", "0225604210017030149", 0, "ทางเดินส่วนกลาง", "", "15", "Fire Hose Cabinet"], ["1FHC-15/3", "0225604210017030151", 0, "ทำงานพยาบาล", "", "15", "Fire Hose Cabinet"], ["1FHC-15/4", "0225604210001030147", 0, "ทำงานพยาบาล", "", "15", "Fire Hose Cabinet"], ["1FHC-15/5", "0225604210017030155", 0, "ลิฟท์ L4-L7", "", "15", "Fire Hose Cabinet"], ["1FHC-15/6", "0225604210017030155", 0, "ห้องเก็บของ", "", "15", "Fire Hose Cabinet"], ["1FHC-15/7", "0225604210017030154", 0, "ผู้ป่วยโซน A", "", "15", "Fire Hose Cabinet"], ["2FHC-15/2", "0225604210017030032", 0, "ทำงานพยาบาล2", "C", "15", "Fire Hose Cabinet"], ["1FHC-15/8", "0225604210017030152", 0, "ผู้ป่วยโซน", "", "15", "Fire Hose Cabinet"], ["2FHC-15/1", "0225604210017030333", 0, "ทำงานพยาบาล1", "C", "15", "Fire Hose Cabinet"], ["2FHC-16/1", "0225604210017030335", 0, "หน้าห้องพิเศษ 8", "C", "16", "Fire Hose Cabinet"], ["2FHC-16/2", "0225604210017030334", 0, "หน้าห้องล้างกระโถน 1", "C", "16", "Fire Hose Cabinet"], ["1FHC-16/1", "0225604210017030157", 0, "หน้าห้องพิเศษคู่ 2 ( 19-20 )", "", "16", "Fire Hose Cabinet"], ["1FHC-16/2", "0225604210017030156", 0, "หน้าโถงลิฟท์ 1", "", "16", "Fire Hose Cabinet"], ["1FHC-16/3", "0225604210017030158", 0, "ตรงข้ามบันไดหนีไฟ 1", "", "16", "Fire Hose Cabinet"], ["1FHC-16/4", "0225604210017030159", 0, "หน้าบันไดหนีไฟ 4", "", "16", "Fire Hose Cabinet"], ["1FHC-16/5", "0225604210017030162", 0, "โถงลิฟท์ 4-7", "", "16", "Fire Hose Cabinet"], ["1FHC-16/6", "0225604210017030160", 0, "หน้าห้องหัตถการ", "", "16", "Fire Hose Cabinet"], ["1FHC-16/7", "0225604210017030161", 0, "หน้าห้องคนไข้ 4 เตียง ( ห้อง 4 )", "", "16", "Fire Hose Cabinet"], ["1FHC-17/4", "0225604210017030166", 0, "หน้าบันได 4", "", "17", "Fire Hose Cabinet"], ["1FHC-17/5", "0225604210017030169", 0, "โถงลิฟท์ดับเพลิง", "", "17", "Fire Hose Cabinet"], ["1FHC-17/6", "0225604210017030167", 0, "หน้าห้องเก็บของสะอาด", "", "17", "Fire Hose Cabinet"], ["1FHC-17/7", "0225304210017030168", 0, "หน้าบันได 14", "", "17", "Fire Hose Cabinet"], ["2FHC-17/1", "0225604210017030337", 0, "หน้าห้องพักพิเศษ 9", "C", "17", "Fire Hose Cabinet"], ["2FHC-17/2", "0225604210017030336", 0, "หน้าห้องล้างกระโถน 1", "C", "17", "Fire Hose Cabinet"], ["1FHC-17/1", "0225604210017030164", 0, "หน้าห้องน้ำหญิง", "", "17", "Fire Hose Cabinet"], ["1FHC-17/2", "0225604210017030163", 0, "หน้าห้องแม่บ้าน", "", "17", "Fire Hose Cabinet"], ["1FHC-17/3", "0225604210071030165", 0, "หน้าห้องนอนเวร 2", "", "17", "Fire Hose Cabinet"], ["1FHC-18/1", "0225604210017030171", 0, "หน้าห้องน้ำชาย 2", "", "18", "Fire Hose Cabinet"], ["1FHC-18/2", "0225604210017030170", 0, "หน้าห้องแม่บ้าน", "", "18", "Fire Hose Cabinet"], ["1FHC-18/3", "0225604210017030172", 0, "หน้าห้องนอนเวร 2", "", "18", "Fire Hose Cabinet"], ["1FHC-18/4", "0225604210017030173", 0, "หน้าบันได 4", "", "18", "Fire Hose Cabinet"], ["1FHC-18/7", "0225604210017030175", 0, "หน้าบันได 14", "", "18", "Fire Hose Cabinet"], ["2FHC-18/1", "0225604210017030339", 0, "หน้าบันได 1", "C", "18", "Fire Hose Cabinet"], ["2FHC-18/2", "0225604210017030338", 0, "ทางเดินบริการฝั่งบันได 2", "C", "18", "Fire Hose Cabinet"], ["1FHC-18/5", "0225604210017030176", 0, "โถงลิฟท์ดับเพลิง", "", "18", "Fire Hose Cabinet"], ["1FHC-18/6", "0225604210017030174", 0, "หน้าห้องเก็บของสะอาด", "", "18", "Fire Hose Cabinet"], ["1FHC-19/1", "0225604210017030178", 0, "โถงทางเดิน 1", "", "19", "Fire Hose Cabinet"], ["1FHC-19/2", "0225604210017030177", 0, "โถงทางเดิน 1", "", "19", "Fire Hose Cabinet"], ["1FHC-19/3", "0225604210017030179", 0, "หน้าห้องนอนเวร 2", "", "19", "Fire Hose Cabinet"], ["1FHC-19/4", "0225604210017030180", 0, "หน้าบันได 4", "", "19", "Fire Hose Cabinet"], ["1FHC-19/5", "0225604210017030183", 0, "โถงลิฟท์ดับเพลิง", "", "19", "Fire Hose Cabinet"], ["1FHC-19/6", "0225604210017030181", 0, "หน้าห้องเก็บของสะอาด", "", "19", "Fire Hose Cabinet"], ["1FHC-19/7", "0225604210017030182", 0, "หน้าบันได 14", "", "19", "Fire Hose Cabinet"], ["2FHC-19/1", "0225604210017030341", 0, "หน้าห้องพักพิเศษ 9", "C", "19", "Fire Hose Cabinet"], ["2FHC-19/2", "0225604210017030340", 0, "หน้าห้องล้างกระโถน 1", "C", "19", "Fire Hose Cabinet"], ["1FHC-20/1", "0225604210017030185", 0, "ห้องเก็บของสะอาด", "", "20", "Fire Hose Cabinet"], ["1FHC-20/2", "0225604210017030184", 0, "หน้าห้องนอนเวร", "", "20", "Fire Hose Cabinet"], ["1FHC-20/3", "0225604210017030186", 0, "หน้าบันไดหนีไฟ 4", "", "20", "Fire Hose Cabinet"], ["1FHC-20/4", "0225604210017030187", 0, "โถงลิฟท์ 4-7", "", "20", "Fire Hose Cabinet"], ["1FHC-20/5", "0225604210017030190", 0, "หน้าห้องเก็บของ", "", "20", "Fire Hose Cabinet"], ["1FHC-20/6", "0225604210017030189", 0, "หน้าห้องพิเศษ 5", "", "20", "Fire Hose Cabinet"], ["1FHC-20/7", "0225604210017030188", 0, "ส่วนกลาง", "", "20", "Fire Hose Cabinet"], ["2FHC-20/1", "0225604210017030343", 0, "หน้าห้องพักแพทย์", "C", "20", "Fire Hose Cabinet"], ["2FHC-20/2", "0225604210017030343", 0, "หน้าห้องล้างเครื่องมือ", "C", "20", "Fire Hose Cabinet"], ["1FHC-21/1", "0225604210017030192", 0, "ทางเดินหน้าห้องขนส่ง", "", "21", "Fire Hose Cabinet"], ["1FHC-21/2", "0225604210017030191", 0, "หน้าห้องเก็บของสะอาด", "", "21", "Fire Hose Cabinet"], ["1FHC-21/3", "0225604210017030193", 0, "หน้าห้องนอนเวร 2", "", "21", "Fire Hose Cabinet"], ["1FHC-21/4", "0225604210017030194", 0, "หน้าบันได 4", "", "21", "Fire Hose Cabinet"], ["1FHC-21/5", "0225604210017030197", 0, "โถงลิฟท์ดับเพลิง", "", "21", "Fire Hose Cabinet"], ["1FHC-21/6", "0225604210017030196", 0, "หน้าห้องเก็บเครื่องมือ", "", "21", "Fire Hose Cabinet"], ["1FHC-21/7", "0225604210017030195", 0, "ทางเดินหน้าห้องพิเศษ 13", "", "21", "Fire Hose Cabinet"], ["2FHC-21/1", "0225604210017030345", 0, "หน้าห้องพักแพทย์", "C", "21", "Fire Hose Cabinet"], ["2FHC-21/2", "0225604210017030344", 0, "หน้าห้องล้างเครื่องมือ", "C", "21", "Fire Hose Cabinet"], ["1FHC-22/1", "0225604210017030106", 0, "หน้าห้องเก็บของสะอาด", "", "22", "Fire Hose Cabinet"], ["1FHC-22/2", "0225604210017030204", 0, "โถงลิฟท์ 1", "", "22", "Fire Hose Cabinet"], ["1FHC-22/3", "0225604210017030205", 0, "ช้างบันไดหนีไฟ 4", "", "22", "Fire Hose Cabinet"], ["1FHC-22/4", "0225604210017030206", 0, "โถงลิฟท์ 4-7", "", "22", "Fire Hose Cabinet"], ["1FHC-22/5", "0225604210017030106", 0, "ข้างห้องหัตถการ", "", "22", "Fire Hose Cabinet"], ["1FHC-22/6", "0225604210017030105", 0, "หน้าห้องพิเศษ 12", "", "22", "Fire Hose Cabinet"], ["1FHC-22/7", "0225604210017030104", 0, "หน้าห้องพักแพทย์", "", "22", "Fire Hose Cabinet"], ["2FHC-22/1", "0225604210017030347", 0, "หน้าห้องล้างเครื่องมือ", "", "22", "Fire Hose Cabinet"], ["2FHC-22/2", "0225604210017030346", 0, "โถงพักรอ", "", "22", "Fire Hose Cabinet"], ["1FHC-23/1", "0225604210017030108", 0, "หน้าห้องเก็บของสะอาด", "", "23", "Fire Hose Cabinet"], ["1FHC-23/2", "0225604210017030107", 0, "โถงลิฟท์ 1", "", "23", "Fire Hose Cabinet"], ["1FHC-23/3", "0225604210017030109", 0, "ช้างบันไดหนีไฟ 4", "", "23", "Fire Hose Cabinet"], ["1FHC-23/6", "0225604210017030112", 0, "หน้าห้องพิเศษ 12", "", "23", "Fire Hose Cabinet"], ["1FHC-23/4", "0225604210017030110", 0, "โถงลิฟท์ 4-7", "", "23", "Fire Hose Cabinet"], ["1FHC-23/5", "0225604210017030113", 0, "ข้างห้องหัตถการ", "", "23", "Fire Hose Cabinet"], ["1FHC-23/7", "0225604210017030111", 0, "หน้าห้องพักแพทย์", "", "23", "Fire Hose Cabinet"], ["2FHC-23/1", "0225604210017030349", 0, "หน้าห้องล้างเครื่องมือ", "C", "23", "Fire Hose Cabinet"], ["2FHC-23/2", "0225604210017030348", 0, "โถงพักรอ", "C", "23", "Fire Hose Cabinet"], ["1FHC-24/1", "0225604210017030115", 0, "หน้าห้องเก็บของสะอาด", "", "24", "Fire Hose Cabinet"], ["1FHC-24/2", "0225604210017030114", 0, "โถงลิฟท์ 1", "", "24", "Fire Hose Cabinet"], ["1FHC-24/3", "0225604210017030116", 0, "ช้างบันไดหนีไฟ 4", "", "24", "Fire Hose Cabinet"], ["1FHC-24/4", "0225604210017030117", 0, "โถงลิฟท์ 4-7", "", "24", "Fire Hose Cabinet"], ["1FHC-24/5", "0225604210017030120", 0, "ข้างห้องหัตถการ", "", "24", "Fire Hose Cabinet"], ["1FHC-24/6", "0225604210017030119", 0, "หน้าห้องพิเศษ 12", "", "24", "Fire Hose Cabinet"], ["1FHC-24/7", "0225604210017030118", 0, "หน้าห้องพิเศษ 12", "", "24", "Fire Hose Cabinet"], ["2FHC-24/1", "0225604210017030351", 0, "หน้าห้องพักแพทย์", "C", "24", "Fire Hose Cabinet"], ["2FHC-24/2", "0225604210017030350", 0, "หน้าห้องล้างเครื่องมือ", "C", "24", "Fire Hose Cabinet"], ["1FHC-25/3", "0225604210017030124", 0, "ช้างบันไดหนีไฟ 4", "", "25", "Fire Hose Cabinet"], ["1FHC-25/4", "0225604210017030123", 0, "โถงลิฟท์ 4-7", "", "25", "Fire Hose Cabinet"], ["1FHC-25/5", "0225604210017030127", 0, "ข้างห้องหัตถการ", "", "25", "Fire Hose Cabinet"], ["1FHC-25/6", "0225604210017030126", 0, "หน้าห้องพิเศษ 12", "", "25", "Fire Hose Cabinet"], ["1FHC-25/7", "0225604210017030125", 0, "ทางเดิน", "", "25", "Fire Hose Cabinet"], ["1FHC-25/1", "0225604210017030122", 0, "หน้าห้องเก็บของสะอาด", "", "25", "Fire Hose Cabinet"], ["1FHC-25/2", "0225644210017030121", 0, "โถงลิฟท์ 1", "", "25", "Fire Hose Cabinet"], ["2FHC-25/1", "0225604210017030353", 0, "หน้าห้องพักแพทย์", "C", "25", "Fire Hose Cabinet"], ["2FHC-25/2", "0225604210017030352", 0, "หน้าห้องล้างเครื่องมือ", "C", "25", "Fire Hose Cabinet"], ["1FHC-26/3", "0225604210017030130", 0, "ทางเดินหน้าห้องนอนเวร 2", "", "26", "Fire Hose Cabinet"], ["1FHC-26/4", "0225604210017030131", 0, "หน้าบันได 4", "", "26", "Fire Hose Cabinet"], ["1FHC-26/5", "0225604210017030134", 0, "โถงลิฟท์ดับเพลิง", "", "26", "Fire Hose Cabinet"], ["1FHC-26/6", "0225604210017030132", 0, "หน้าห้องเก็บเครื่องมือ", "", "26", "Fire Hose Cabinet"], ["1FHC-26/7", "0225604210017030133", 0, "ทางเดินหน้าห้องพิเศษคู่ 11", "", "26", "Fire Hose Cabinet"], ["2FHC-26/1", "0225604210017030355", 0, "หน้าห้องกิจกรรม", "C", "26", "Fire Hose Cabinet"], ["2FHC-26/2", "0225604210017030354", 0, "หน้าห้องล้างเครื่องมือ", "C", "26", "Fire Hose Cabinet"], ["1FHC-26/1", "0225604210017030129", 0, "ทางเดินหน้าห้องขนส่ง", "", "26", "Fire Hose Cabinet"], ["1FHC-26/2", "0225604210017030128", 0, "หน้าห้องเก็บของสะอาด", "", "26", "Fire Hose Cabinet"], ["1FHC-27/1", "0225604210017030136", 0, "ทางเดินหน้าห้องขนส่ง", "", "27", "Fire Hose Cabinet"], ["1FHC-27/2", "0225604210017030135", 0, "หน้าห้องเก็บของสะอาด", "", "27", "Fire Hose Cabinet"], ["1FHC-27/3", "0225604210017030138", 0, "ทางเดินหน้าห้องนอนเวร 2", "", "27", "Fire Hose Cabinet"], ["1FHC-27/4", "0225604210017030137", 0, "หน้าบันได 4", "", "27", "Fire Hose Cabinet"], ["1FHC-27/5", "02256042100017030141", 0, "โถงลิฟท์ดับเพลิง", "", "27", "Fire Hose Cabinet"], ["1FHC-27/6", "0225604210017030139", 0, "หน้าห้องเก็บเครื่องมือ", "", "27", "Fire Hose Cabinet"], ["1FHC-27/7", "0225604210017030140", 0, "ทางเดินหน้าห้องพิเศษ 13", "", "27", "Fire Hose Cabinet"], ["2FHC-27/1", "0225604210017030356", 0, "หน้าห้องพักแพทย์", "C", "27", "Fire Hose Cabinet"], ["2FHC-27/2", "0225604210017030357", 0, "หน้าห้องล้างเครื่องมือ", "C", "27", "Fire Hose Cabinet"], ["1FHC-28/1", "02256042100017030143", 0, "ทางเดินหน้าห้องขนส่ง", "", "28", "Fire Hose Cabinet"], ["1FHC-28/2", "0225604210017030142", 0, "หน้าห้องเก็บของสะอาด", "", "28", "Fire Hose Cabinet"], ["1FHC-28/3", "0225604210017030144", 0, "ทางเดินหน้าห้องนอนเวร 2", "", "28", "Fire Hose Cabinet"], ["1FHC-28/4", "0225604210017030145", 0, "หน้าบันได 4", "", "28", "Fire Hose Cabinet"], ["1FHC-28/5", "0225604210017030148", 0, "โถงลิฟท์ดับเพลิง", "", "28", "Fire Hose Cabinet"], ["1FHC-28/6", "02256042100017030147", 0, "หน้าห้องเก็บเครื่องมือ", "", "28", "Fire Hose Cabinet"], ["1FHC-28/7", "02256042100017030148", 0, "หน้าห้องพักญาติคนไข้", "", "28", "Fire Hose Cabinet"], ["2FHC-28/1", "0225604210017030359", 0, "หน้าห้องพักแพทย์", "C", "28", "Fire Hose Cabinet"], ["2FHC-28/2", "0225604210017030358", 0, "หน้าห้องล้างเครื่องมือ", "C", "28", "Fire Hose Cabinet"], ["1FHC-30/1", "02256042100017030144", 0, "โถงลิฟท์", "", "30", "Fire Hose Cabinet"], ["1FHC-30/2", "", 0, "บันไดหนีไฟ 4", "", "30", "Fire Hose Cabinet"], ["1FHC-30/3", "0225604210017030151", 0, "โถงลิฟท์ 4-7", "", "30", "Fire Hose Cabinet"], ["1FHC-30/4", "", 0, "บันไดหนีไฟ 3", "", "30", "Fire Hose Cabinet"], ["2FHC-30/1", "02256042100017030153", 0, "บันไดหนีไฟ", "C", "30", "Fire Hose Cabinet"], ["2FHC-30/2", "", 0, "บันไดหนีไฟ 2", "C", "30", "Fire Hose Cabinet"], ["1FHC-31/1", "", 0, "บันไดทางขึ้นลานจอดเฮลิค็อปเตอร์", "", "31", "Fire Hose Cabinet"], ["2FHC-32/1", "0225604210017030156", 0, "ลานจอดเฮลิค็อปเตอร์", "C", "32", "Fire Hose Cabinet"]];
+
+/* ===== CONFIG =====
+   หลังจาก deploy Apps Script (Code.gs) เป็น Web App แล้ว ให้นำ URL ที่ได้
+   (ลงท้ายด้วย /exec) มาใส่ในนี้ แล้ว re-deploy ไฟล์นี้ขึ้น GitHub Pages ใหม่ */
+const GS_URL = ''; // ตัวอย่าง: 'https://script.google.com/macros/s/XXXXXXXX/exec'
+const INSPECTOR_NAME = ''; // ใส่ชื่อผู้ตรวจ (ถ้าต้องการบันทึกลง log), เว้นว่างได้
+
+/* ===== STATE ===== */
+let overrides = {};      // id -> {status, checklist, note, ts}
+let statusFilters = new Set();
+
+function loadOverrides(){
+  try{ overrides = JSON.parse(localStorage.getItem('fhc_status')||'{}'); }catch(e){ overrides={}; }
+}
+function saveOverrides(){
+  try{ localStorage.setItem('fhc_status', JSON.stringify(overrides)); }catch(e){}
+}
+
+function getStatus(idx){
+  const id = RAW[idx][0];
+  if (overrides[id] && typeof overrides[id].status === 'number') return overrides[id].status;
+  return RAW[idx][2];
+}
+
+function floorOrder(fl){
+  if (fl.startsWith('B')){ const n=parseInt(fl.slice(1)); return isNaN(n)?-99:-n; }
+  if (fl === 'MZ') return 0.5;
+  const n=parseInt(fl); return isNaN(n)?99:n;
+}
+
+function machineIdOrder(id){
+  const m = id.match(/\/(\d+)/);
+  return m ? parseInt(m[1]) : 0;
+}
+
+/* ===== SYNC WITH GOOGLE SHEETS ===== */
+function setSyncStatus(state, text){
+  const dot = document.getElementById('syncDot');
+  const label = document.getElementById('syncText');
+  label.textContent = text;
+  dot.style.background = state==='ok' ? 'var(--success)' : state==='err' ? 'var(--danger)' : 'var(--muted)';
+}
+
+async function syncFromSheets(){
+  if (!GS_URL){
+    setSyncStatus('off', 'LOCAL ONLY');
+    return;
+  }
+  setSyncStatus('busy', 'SYNCING...');
+  try{
+    const res = await fetch(`${GS_URL}?action=getLatest`);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'sync failed');
+    Object.keys(data.latest).forEach(id=>{
+      const row = data.latest[id];
+      const overall = String(row.OverallStatus||'').toLowerCase();
+      const status = overall === 'ปกติ' || overall === 'ok' ? 1 : (overall ? 2 : 0);
+      overrides[id] = {
+        status,
+        checklist: { cabinet: row.Cabinet, hose: row.Hose, nozzle: row.Nozzle, valve: row.Valve, pressure: row.Pressure, pressVal: row.PressureVal },
+        note: row.Note || '',
+        ts: row.Timestamp || ''
+      };
+    });
+    saveOverrides();
+    render();
+    setSyncStatus('ok', 'SYNCED · ' + new Date().toLocaleTimeString('th-TH',{hour12:false}));
+  }catch(err){
+    setSyncStatus('err', 'SYNC ERROR');
+    console.error(err);
+  }
+}
+
+async function pushToSheet(record){
+  if (!GS_URL) return;
+  try{
+    await fetch(GS_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'text/plain;charset=utf-8'},
+      body: JSON.stringify({ action: 'savePM', ...record })
+    });
+  }catch(err){
+    console.error('pushToSheet failed', err);
+    showToast('บันทึกลง local แล้ว แต่ sync ขึ้น Sheet ไม่สำเร็จ (จะลองใหม่ตอน sync ครั้งถัดไป)');
+  }
+}
+
+function startAutoSync(intervalMs = 30000){
+  if (!GS_URL) return;
+  syncFromSheets();
+  setInterval(syncFromSheets, intervalMs);
+}
+
+/* ===== CLOCK ===== */
+function updateClock(){
+  const d = new Date();
+  document.getElementById('clock').textContent = d.toLocaleTimeString('th-TH', {hour12:false});
+}
+setInterval(updateClock, 1000); updateClock();
+
+/* ===== FILTER UI ===== */
+function toggleStatusFilter(key, el){
+  if (statusFilters.has(key)){ statusFilters.delete(key); el.classList.remove('active'); }
+  else { statusFilters.add(key); el.classList.add('active'); }
+  applyFilter();
+}
+
+function populateFloorSelect(){
+  const floors = [...new Set(RAW.map(r=>r[5]))].sort((a,b)=>floorOrder(a)-floorOrder(b));
+  const sel = document.getElementById('floorSel');
+  floors.forEach(f=>{
+    const opt = document.createElement('option');
+    opt.value = f; opt.textContent = 'ชั้น ' + f;
+    sel.appendChild(opt);
+  });
+}
+
+function passFilter(idx){
+  const r = RAW[idx];
+  const st = getStatus(idx);
+  const stKey = st===1?'ok':st===2?'br':'un';
+  if (statusFilters.size>0 && !statusFilters.has(stKey)) return false;
+  const floorSel = document.getElementById('floorSel').value;
+  if (floorSel && r[5] !== floorSel) return false;
+  const zoneSel = document.getElementById('zoneSel').value;
+  if (zoneSel && r[4] !== zoneSel) return false;
+  const q = document.getElementById('searchBox').value.trim().toLowerCase();
+  if (q && !(r[0].toLowerCase().includes(q) || r[3].toLowerCase().includes(q))) return false;
+  return true;
+}
+
+/* ===== RENDER ===== */
+function render(){
+  const main = document.getElementById('mainArea');
+  main.innerHTML = '';
+  const idxs = RAW.map((_,i)=>i).filter(passFilter);
+  if (idxs.length===0){
+    main.innerHTML = '<div class="empty">ไม่พบรายการที่ตรงกับตัวกรอง</div>';
+    updateStats();
+    return;
+  }
+  const byFloor = {};
+  idxs.forEach(i=>{
+    const fl = RAW[i][5];
+    (byFloor[fl] = byFloor[fl]||[]).push(i);
+  });
+  const floors = Object.keys(byFloor).sort((a,b)=>floorOrder(a)-floorOrder(b));
+  floors.forEach(fl=>{
+    const items = byFloor[fl].sort((a,b)=> RAW[a][4].localeCompare(RAW[b][4]) || machineIdOrder(RAW[a][0])-machineIdOrder(RAW[b][0]));
+    const grp = document.createElement('div');
+    grp.className = 'floor-grp';
+    grp.innerHTML = `<div class="floor-hdr">
+        <div class="floor-lbl">ชั้น ${fl}</div><div class="floor-div"></div>
+        <div class="floor-cnt">${items.length} จุด</div>
+      </div><div class="grid" id="grid_${fl}"></div>`;
+    main.appendChild(grp);
+    const grid = grp.querySelector('.grid');
+    items.forEach(i=>{
+      const r = RAW[i];
+      const st = getStatus(i);
+      const cls = st===1?'ok':st===2?'br':'un';
+      const label = st===1?'ปกติ':st===2?'ชำรุด':'ยังไม่ตรวจ';
+      const card = document.createElement('div');
+      card.className = 'card ' + cls;
+      card.onclick = ()=>openModal(i);
+      card.innerHTML = `
+        <div><span class="id">${r[0]}</span><span class="zn">${r[4]||'-'}</span></div>
+        <div class="loc">${r[3]||'-'}</div>
+        <div class="badge"><span class="dot"></span>${label}</div>`;
+      grid.appendChild(card);
+    });
+  });
+  updateStats();
+}
+
+function updateStats(){
+  let ok=0, br=0, un=0;
+  RAW.forEach((r,i)=>{
+    const st = getStatus(i);
+    if (st===1) ok++; else if (st===2) br++; else un++;
+  });
+  document.getElementById('statTotal').textContent = RAW.length;
+  document.getElementById('statOk').textContent = ok;
+  document.getElementById('statBr').textContent = br;
+  document.getElementById('statUn').textContent = un;
+}
+
+function applyFilter(){ render(); }
+
+/* ===== MODAL / PM CHECKLIST ===== */
+let curIdx = null;
+let curChk = {cabinet:null, hose:null, nozzle:null, valve:null, pressure:null};
+
+function openModal(idx){
+  curIdx = idx;
+  curChk = {cabinet:null, hose:null, nozzle:null, valve:null, pressure:null};
+  const r = RAW[idx];
+  document.getElementById('mTitle').textContent = r[0];
+  document.getElementById('mSub').textContent = `ชั้น ${r[5]} · โซน ${r[4]||'-'} · ${r[3]||'-'}`;
+  document.getElementById('pressVal').value = '';
+  document.getElementById('noteBox').value = '';
+  ['chkCabinet','chkHose','chkNozzle','chkValve','chkPressure'].forEach(id=>{
+    document.getElementById(id).querySelectorAll('.chk-opt').forEach(o=>o.classList.remove('sel-pass','sel-fail'));
+  });
+  const ov = overrides[r[0]];
+  if (ov && ov.checklist){
+    curChk = {...ov.checklist};
+    document.getElementById('pressVal').value = ov.checklist.pressVal || '';
+    document.getElementById('noteBox').value = ov.note || '';
+    reflectChk();
+  }
+  updateOverall();
+  document.getElementById('modalBg').classList.add('show');
+}
+
+function closeModal(){ document.getElementById('modalBg').classList.remove('show'); curIdx=null; }
+function closeOut(e){ if (e.target.id === 'modalBg') closeModal(); }
+
+function setChk(key, val, el){
+  curChk[key] = val;
+  el.parentElement.querySelectorAll('.chk-opt').forEach(o=>o.classList.remove('sel-pass','sel-fail'));
+  el.classList.add(val==='pass'?'sel-pass':'sel-fail');
+  updateOverall();
+}
+
+function reflectChk(){
+  const map = {cabinet:'chkCabinet', hose:'chkHose', nozzle:'chkNozzle', valve:'chkValve', pressure:'chkPressure'};
+  Object.keys(map).forEach(k=>{
+    if (!curChk[k]) return;
+    const box = document.getElementById(map[k]);
+    const opts = box.querySelectorAll('.chk-opt');
+    const target = curChk[k]==='pass'? opts[0] : opts[1];
+    target.classList.add(curChk[k]==='pass'?'sel-pass':'sel-fail');
+  });
+}
+
+function updateOverall(){
+  const box = document.getElementById('overallBox');
+  const vals = [curChk.cabinet, curChk.hose, curChk.nozzle, curChk.valve, curChk.pressure];
+  if (vals.some(v=>v===null)){
+    box.className = 'overall';
+    box.textContent = 'กรุณาตรวจครบทั้ง 5 ข้อ';
+    return;
+  }
+  const allPass = vals.every(v=>v==='pass');
+  box.className = 'overall ' + (allPass?'ok':'br');
+  box.textContent = allPass ? '✓ สรุปผล: ปกติ' : '✕ สรุปผล: ชำรุด (มีอย่างน้อย 1 ข้อไม่ผ่าน)';
+}
+
+function saveCheck(){
+  if (curIdx===null) return;
+  const vals = [curChk.cabinet, curChk.hose, curChk.nozzle, curChk.valve, curChk.pressure];
+  if (vals.some(v=>v===null)){
+    showToast('กรุณาตรวจให้ครบทั้ง 5 ข้อก่อนบันทึก');
+    return;
+  }
+  const r = RAW[curIdx];
+  const allPass = vals.every(v=>v==='pass');
+  const pressVal = document.getElementById('pressVal').value;
+  const note = document.getElementById('noteBox').value;
+  const overallLabel = allPass ? 'ปกติ' : 'ชำรุด';
+  overrides[r[0]] = {
+    status: allPass?1:2,
+    checklist: {...curChk, pressVal},
+    note,
+    ts: new Date().toISOString()
+  };
+  saveOverrides();
+  closeModal();
+  render();
+  showToast(`บันทึกผล PM ${r[0]} เรียบร้อย` + (GS_URL ? ' (กำลัง sync ขึ้น Sheet...)' : ''));
+
+  pushToSheet({
+    machineId: r[0],
+    cabinet: curChk.cabinet,
+    hose: curChk.hose,
+    nozzle: curChk.nozzle,
+    valve: curChk.valve,
+    pressure: curChk.pressure,
+    pressureVal: pressVal,
+    overallStatus: overallLabel,
+    note,
+    inspector: INSPECTOR_NAME
+  });
+}
+
+/* ===== TOAST ===== */
+let toastTimer;
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>{ t.style.display='none'; }, 2500);
+}
+
+/* ===== EXPORT CSV ===== */
+function exportCSV(){
+  const rows = [['Machine ID','Asset No','Status','Location','Zone','Floor','Dept','Cabinet','Hose','Nozzle','Valve','Pressure','PressureVal','Note','LastUpdate']];
+  RAW.forEach((r,i)=>{
+    const st = getStatus(i);
+    const stLabel = st===1?'ปกติ':st===2?'ชำรุด':'ยังไม่ตรวจ';
+    const ov = overrides[r[0]] || {};
+    const c = ov.checklist || {};
+    rows.push([r[0], r[1], stLabel, r[3], r[4], r[5], r[6],
+      c.cabinet||'', c.hose||'', c.nozzle||'', c.valve||'', c.pressure||'', c.pressVal||'', ov.note||'', ov.ts||'']);
+  });
+  const csv = rows.map(row=>row.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `FHC_Status_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* ===== INIT ===== */
+loadOverrides();
+populateFloorSelect();
+render();
+setSyncStatus('off', GS_URL ? 'CONNECTING...' : 'LOCAL ONLY');
+startAutoSync(30000);
+</script>
+</body>
+</html>
