@@ -259,6 +259,21 @@ const RAW =
 const GS_URL = 'https://script.google.com/macros/s/AKfycbzWKAI1QofRBlAg_MDNbwalSFtmiBYoaz8vwiNSb3dOSirpP0qDCm6S8NPu5Rp40ETD/exec';
 const INSPECTOR_NAME = ''; // ใส่ชื่อผู้ตรวจ (ถ้าต้องการบันทึกลง log), เว้นว่างได้
 
+/* ===== เชื่อมระบบติดตามงาน: ผล PM "ชำรุด" และแจ้ง DEFECT จะส่งให้หัวหน้าช่างรับเรื่อง (เว้น URL ว่าง = ปิด) ===== */
+const JOB_TRACKING_URL = 'https://script.google.com/macros/s/AKfycbzIWM6HQZbQuifxIIFuLZUxm-LFUOZiSC5qMNG7PNKJuaalrm-iyf8KjsK6HdM7Vgca/exec';
+const JOB_TRACKING_KEY = '';
+const JOB_TRACK_SYSTEM = 'ตู้ดับเพลิง', JOB_TRACK_TYPE = 'ตู้ดับเพลิงชำรุด';
+function jobTrackReport(o){
+  if (!JOB_TRACKING_URL || !o || !o.id) return;
+  const body = { action:'reportFromPM', key:JOB_TRACKING_KEY, system:JOB_TRACK_SYSTEM, source:o.source || 'ฟอร์ม PM',
+    machine_id:o.id, type:JOB_TRACK_TYPE, location:o.location || '', detail:o.detail || '', reporter:o.reporter || '-',
+    status_label:o.label || '', photos:(o.photos || []).filter(p => typeof p === 'string' && p).slice(0,3) };
+  fetch(JOB_TRACKING_URL, { method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify(body) })
+    .then(() => setTimeout(() => showToast('📨 ส่งเรื่องเข้าระบบติดตามงานแล้ว (รอหัวหน้าช่างรับเรื่อง)'), 2600))
+    .catch(e => console.warn('job tracking report failed:', e.message));
+}
+function jobTrackLoc(floor, zone, loc){ return 'ชั้น ' + (floor || '-') + (zone ? ' โซน ' + zone : '') + ' · ' + (loc || '-'); }
+
 /* ===== STATE ===== */
 let overrides = {};      // id -> {status, checklist, note, ts}
 let statusFilters = new Set();
@@ -650,6 +665,18 @@ function saveCheck(){
     photos: curPhotos,
     inspector: INSPECTOR_NAME
   });
+
+  if (!allPass){
+    const LBL = {cabinet:'สภาพตัวตู้', hose:'สายฉีดน้ำดับเพลิง', nozzle:'หัวฉีดน้ำ (Nozzle)', valve:'วาล์วน้ำดับเพลิง', pressure:'แรงดันน้ำ'};
+    const failed = Object.keys(LBL).filter(k => curChk[k] === 'fail').map(k => LBL[k]);
+    jobTrackReport({
+      id: r[0], reporter: INSPECTOR_NAME || 'ผู้ตรวจ PM ตู้ดับเพลิง', label: '🔴 ชำรุด',
+      location: jobTrackLoc(r[5], r[4], r[3]),
+      detail: ['ระบบ: ตู้ดับเพลิง (FHC)', 'ผลตรวจ PM วันที่ ' + new Date().toISOString().slice(0,10) + ' — 🔴 ชำรุด',
+        'ข้อที่ไม่ผ่าน: ' + failed.join(', '), pressVal ? 'แรงดันที่วัดได้: ' + pressVal : '', note ? 'หมายเหตุ: ' + note : ''].filter(Boolean).join('\n'),
+      photos: curPhotos
+    });
+  }
 }
 
 /* ===== TOAST ===== */
@@ -691,5 +718,665 @@ render();
 setSyncStatus('off', GS_URL ? 'CONNECTING...' : 'LOCAL ONLY');
 startAutoSync(30000);
 </script>
+
+<script>
+/* ===== ตั้งค่าฟีเจอร์แบบ EAF สำหรับแอพนี้ ===== */
+const XF_CFG = {
+  app: 'FHC', name: 'ตู้ดับเพลิง (Fire Hose Cabinet)', unit: 'ตู้',
+  gsUrl: GS_URL, // Apps Script ตัวเดิมของแอพนี้ (เพิ่ม action ใหม่ไว้แล้วในไฟล์ .gs)
+  specLabels: ["ขนาดสายฉีด (นิ้ว)","ความยาวสายฉีด (ม.)","ชนิดหัวฉีด / วาล์ว"],
+  items: () => RAW.map(r => ({ id: r[0], asset: r[1], location: r[3], zone: r[4], floor: r[5], dept: r[6] })),
+  isBroken: id => { const i = RAW.findIndex(r => r[0] === id); return i >= 0 && getStatus(i) === 2; },
+  openItem: id => { const i = RAW.findIndex(r => r[0] === id); if (i >= 0) openModal(i); },
+  pmHistory: async id => {
+    const j = await XF.gsGet('getPMHistory', id);
+    return (j.rows || []).map(r => ({ date: r.Timestamp, status: r.OverallStatus, by: r.Inspector, note: r.Note }));
+  },
+  refresh: () => render(),
+  install: () => {
+    // ปุ่มสถิติ: กด "ชำรุด" เพื่อดูรายการ + ช่องนับ "รอสั่งซื้อ"
+    const brStat = document.getElementById('statBr').closest('.stat');
+    brStat.classList.add('xf-clickable');
+    brStat.title = 'กดเพื่อดูรายการชำรุด';
+    brStat.addEventListener('click', () => XF.openBroken());
+    const ordStat = document.createElement('div');
+    ordStat.className = 'stat xf-clickable';
+    ordStat.innerHTML = '<div class="n" id="statOrd" style="color:#ffd54a">0</div><div class="l">🛒 รอสั่งซื้อ</div>';
+    ordStat.addEventListener('click', () => XF.openBroken());
+    brStat.after(ordStat);
+
+    // หลัง render: ทำเครื่องหมายการ์ดที่รอสั่งซื้อ + อัปเดตตัวนับ
+    const origRender = render;
+    render = function () {
+      origRender.apply(this, arguments);
+      document.querySelectorAll('#mainArea .card').forEach(card => {
+        const idEl = card.querySelector('.id');
+        if (!idEl || !XF.isOrdering(idEl.textContent.trim())) return;
+        card.classList.add('xf-ordering');
+        const b = document.createElement('span');
+        b.className = 'xf-ord-badge'; b.textContent = '🛒 รอสั่งซื้อ';
+        card.appendChild(b);
+      });
+      document.getElementById('statOrd').textContent = XF.orderingCount();
+    };
+
+    // หน้าต่างตรวจ PM: เพิ่มแถบปุ่ม DEFECT / ทะเบียนประวัติ / รอสั่งซื้อ / AI Check
+    const origOpen = openModal;
+    openModal = function (idx) {
+      origOpen.apply(this, arguments);
+      XF.attachBar(document.getElementById('modal'), RAW[idx][0], document.querySelector('#modal .modal-actions'));
+    };
+  }
+};
+</script>
+
+<!-- ============================================================
+     ฟีเจอร์แบบ EAF: รายการชำรุด / แจ้ง DEFECT / รอสั่งซื้ออะไหล่ /
+     ทะเบียนประวัติ / อัพโหลดเอกสารเซ็น (AI Check)
+     ตั้งค่าเฉพาะแอพอยู่ใน XF_CFG ด้านล่าง
+     ============================================================ -->
+<style>
+.xf-ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:9000;align-items:center;justify-content:center;padding:14px;}
+.xf-ov.open{display:flex;}
+.xf-box{background:#111827;border:1px solid #243040;border-radius:14px;width:min(560px,96vw);max-height:90vh;overflow-y:auto;color:#d0e8f0;font-family:'Sarabun',sans-serif;padding:18px;}
+.xf-box h3{font-size:16px;color:#00e5ff;margin:0 0 4px;display:flex;align-items:center;gap:8px;}
+.xf-box h3 .xf-x{margin-left:auto;background:none;border:none;color:#8aa0b5;font-size:22px;cursor:pointer;line-height:1;}
+.xf-sub{font-size:12px;color:#6a8aa0;margin-bottom:12px;}
+.xf-row{margin-bottom:11px;}
+.xf-row label{display:block;font-size:12px;color:#6a8aa0;margin-bottom:4px;}
+.xf-row input,.xf-row select,.xf-row textarea{width:100%;box-sizing:border-box;padding:8px 10px;border-radius:7px;border:1px solid #243040;background:#0e1420;color:#d0e8f0;font-family:inherit;font-size:13px;}
+.xf-row input[readonly]{opacity:.65;}
+.xf-row textarea{min-height:70px;resize:vertical;}
+.xf-grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 10px;}
+.xf-btn{width:100%;padding:10px;border-radius:8px;border:none;font-weight:700;cursor:pointer;margin-top:6px;font-family:inherit;font-size:13.5px;}
+.xf-btn:disabled{opacity:.5;cursor:default;}
+.xf-btn-primary{background:#00e5ff;color:#001a20;}
+.xf-btn-danger{background:#e53935;color:#fff;}
+.xf-btn-ghost{background:transparent;border:1px solid #243040;color:#d0e8f0;}
+.xf-urg{display:flex;gap:6px;}
+.xf-urg button{flex:1;padding:8px;border-radius:7px;border:1px solid #243040;background:#0e1420;color:#8aa0b5;cursor:pointer;font-family:inherit;font-size:12.5px;}
+.xf-urg button.sel[data-urg="ปกติ"]{border-color:#2e7d32;color:#66bb6a;background:rgba(46,125,50,.15);}
+.xf-urg button.sel[data-urg="เร่งด่วน"]{border-color:#f9a825;color:#ffd54a;background:rgba(249,168,37,.15);}
+.xf-urg button.sel[data-urg="ฉุกเฉิน"]{border-color:#c62828;color:#ff5252;background:rgba(198,40,40,.18);}
+.xf-photos{display:flex;gap:8px;flex-wrap:wrap;}
+.xf-photo{position:relative;width:92px;height:92px;border-radius:8px;border:1px dashed #2a3a50;background:#0e1420;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:11px;color:#6a8aa0;cursor:pointer;overflow:hidden;text-align:center;}
+.xf-photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}
+.xf-photo .xf-del{position:absolute;top:2px;right:2px;z-index:2;background:rgba(0,0,0,.7);color:#fff;border:none;width:20px;height:20px;border-radius:50%;cursor:pointer;font-size:11px;}
+.xf-tabs{display:flex;gap:4px;border-bottom:1px solid #243040;margin:0 -18px 12px;padding:0 18px;}
+.xf-tabs button{padding:9px 12px;background:none;border:none;color:#6a8aa0;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;font-family:inherit;font-size:13px;}
+.xf-tabs button.act{color:#00e5ff;border-bottom-color:#00e5ff;}
+.xf-tab{display:none;}.xf-tab.act{display:block;}
+.xf-tbl{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px;}
+.xf-tbl th{text-align:left;color:#6a8aa0;font-weight:600;padding:6px;border-bottom:1px solid #243040;white-space:nowrap;}
+.xf-tbl td{padding:6px;border-bottom:1px solid #1a2433;vertical-align:top;}
+.xf-tbl a{color:#00e5ff;}
+.xf-empty{text-align:center;color:#6a8aa0;font-size:12.5px;padding:14px;}
+.xf-sec{font-size:13px;font-weight:700;color:#d0e8f0;margin:14px 0 6px;}
+.xf-list-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid #243040;border-radius:8px;margin-bottom:6px;cursor:pointer;background:#0e1420;}
+.xf-list-item:hover{border-color:#00e5ff;}
+.xf-list-item .xf-id{font-weight:700;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#fff;min-width:96px;}
+.xf-list-item .xf-loc{flex:1;font-size:12px;color:#8aa0b5;}
+.xf-tag{font-size:10.5px;font-weight:700;border-radius:100px;padding:2px 8px;white-space:nowrap;}
+.xf-tag.br{background:rgba(255,68,68,.15);color:#ff5252;}
+.xf-tag.ord{background:rgba(255,213,74,.18);color:#ffd54a;}
+.xf-bar{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;}
+.xf-bar button{flex:1 1 45%;padding:9px 8px;border-radius:8px;font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;border:1px solid #243040;background:#0e1420;color:#d0e8f0;}
+.xf-bar .xf-b-defect{border-color:rgba(255,82,82,.55);color:#ff7070;}
+.xf-bar .xf-b-equip{border-color:rgba(0,229,255,.45);color:#00e5ff;}
+.xf-bar .xf-b-order{border-color:rgba(255,213,74,.6);color:#ffd54a;}
+.xf-bar .xf-b-unorder{border-color:rgba(255,82,82,.55);color:#ff7070;}
+.xf-bar .xf-b-doc{border-color:rgba(0,229,255,.6);color:#00e5ff;flex-basis:100%;}
+.xf-ordering{border-color:#ffd54a !important;box-shadow:0 0 14px -4px rgba(255,213,74,.7) !important;}
+.xf-ord-badge{display:inline-block;margin-top:6px;font-size:10px;font-weight:700;color:#1a1400;background:#ffd54a;border-radius:100px;padding:2px 8px;}
+.xf-clickable{cursor:pointer;}
+.xf-clickable:hover{filter:brightness(1.25);}
+.xf-status{margin-top:10px;padding:10px;border-radius:8px;font-size:13px;display:none;}
+.xf-status.ok{display:block;background:rgba(0,255,80,.1);border:1px solid #2a5a2a;color:#00ff50;}
+.xf-status.flag{display:block;background:rgba(255,210,0,.1);border:1px solid #8a7200;color:#ffd700;}
+.xf-status.err{display:block;background:rgba(255,50,50,.1);border:1px solid #8b1a1a;color:#ff4444;}
+.xf-sigwrap{border:1px solid #243040;border-radius:8px;background:#0e1420;position:relative;touch-action:none;}
+.xf-sigwrap canvas{width:100%;height:140px;display:block;cursor:crosshair;border-radius:8px;}
+.xf-sighint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#2a3550;font-size:12px;pointer-events:none;}
+.xf-sighint.hide{display:none;}
+.xf-timeline-item{padding:6px 0;border-bottom:1px solid #1c2a3a;display:flex;justify-content:space-between;gap:8px;font-size:12px;}
+.xf-toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:#111827;border:1px solid #00e5ff;color:#00e5ff;padding:10px 18px;border-radius:9px;font-size:13px;z-index:9500;display:none;font-family:'Sarabun',sans-serif;max-width:90vw;text-align:center;}
+@media(max-width:520px){.xf-grid2{grid-template-columns:1fr;}}
+</style>
+
+<!-- รายการชำรุด -->
+<div class="xf-ov" id="xfBrokenOv">
+  <div class="xf-box">
+    <h3>🔴 รายการชำรุด <button class="xf-x" type="button" data-xf-close="xfBrokenOv">&times;</button></h3>
+    <div class="xf-sub" id="xfBrokenSub"></div>
+    <div id="xfBrokenBody"></div>
+  </div>
+</div>
+
+<!-- แจ้ง DEFECT -->
+<div class="xf-ov" id="xfDefectOv">
+  <div class="xf-box">
+    <h3>🛠️ แจ้งปัญหา DEFECT <button class="xf-x" type="button" data-xf-close="xfDefectOv">&times;</button></h3>
+    <div class="xf-sub" id="xfDefectSub"></div>
+    <div class="xf-row"><label>ระดับความเร่งด่วน</label>
+      <div class="xf-urg" id="xfDefectUrg">
+        <button type="button" data-urg="ปกติ" class="sel">ปกติ</button>
+        <button type="button" data-urg="เร่งด่วน">เร่งด่วน</button>
+        <button type="button" data-urg="ฉุกเฉิน">ฉุกเฉิน</button>
+      </div>
+    </div>
+    <div class="xf-row"><label>ผู้แจ้ง</label><input type="text" id="xfDefectReporter" placeholder="ชื่อ-นามสกุล"></div>
+    <div class="xf-row"><label>รายละเอียดปัญหา</label><textarea id="xfDefectDetail" placeholder="อธิบายอาการ / ปัญหาที่พบ"></textarea></div>
+    <div class="xf-row"><label>รูปถ่าย (1 รูป)</label><div class="xf-photos" data-xf-photos="defect" data-n="1"></div></div>
+    <button class="xf-btn xf-btn-danger" type="button" id="xfDefectSubmit">📤 ส่งแจ้ง DEFECT</button>
+    <button class="xf-btn xf-btn-ghost" type="button" data-xf-close="xfDefectOv">ยกเลิก</button>
+  </div>
+</div>
+
+<!-- ทะเบียนประวัติ -->
+<div class="xf-ov" id="xfEquipOv">
+  <div class="xf-box">
+    <h3>🗂 ทะเบียนประวัติ <button class="xf-x" type="button" data-xf-close="xfEquipOv">&times;</button></h3>
+    <div class="xf-sub" id="xfEquipSub"></div>
+    <div class="xf-tabs" id="xfEquipTabs">
+      <button type="button" data-tab="info" class="act">ข้อมูล</button>
+      <button type="button" data-tab="pm">ประวัติ PM</button>
+      <button type="button" data-tab="repair">ประวัติซ่อม</button>
+    </div>
+    <div class="xf-tab act" data-tab="info">
+      <div class="xf-grid2">
+        <div class="xf-row"><label>หมายเลขเครื่อง</label><input type="text" id="xfEqId" readonly></div>
+        <div class="xf-row"><label>หมายเลขครุภัณฑ์</label><input type="text" id="xfEqAsset" readonly></div>
+        <div class="xf-row"><label>ชั้น / โซน</label><input type="text" id="xfEqFloor" readonly></div>
+        <div class="xf-row"><label>สถานที่ติดตั้ง</label><input type="text" id="xfEqLoc" readonly></div>
+        <div class="xf-row"><label>ยี่ห้อ</label><input type="text" data-xf-tech="brand"></div>
+        <div class="xf-row"><label>รุ่น</label><input type="text" data-xf-tech="model"></div>
+        <div class="xf-row"><label>Serial No.</label><input type="text" data-xf-tech="serial_no"></div>
+        <div class="xf-row"><label>ผู้จำหน่าย / Supplier</label><input type="text" data-xf-tech="supplier"></div>
+        <div class="xf-row"><label>วันที่ติดตั้ง</label><input type="date" data-xf-tech="install_date"></div>
+        <div class="xf-row"><label id="xfSpec1Lbl">ข้อมูลเพิ่มเติม 1</label><input type="text" data-xf-tech="spec1"></div>
+        <div class="xf-row"><label id="xfSpec2Lbl">ข้อมูลเพิ่มเติม 2</label><input type="text" data-xf-tech="spec2"></div>
+        <div class="xf-row"><label id="xfSpec3Lbl">ข้อมูลเพิ่มเติม 3</label><input type="text" data-xf-tech="spec3"></div>
+      </div>
+      <div class="xf-row"><label>รูปถ่าย (รหัสเครื่อง / ป้ายครุภัณฑ์ / เนมเพลท)</label><div class="xf-photos" data-xf-photos="equip" data-n="3"></div></div>
+      <div class="xf-row"><label>ผู้บันทึก</label><input type="text" id="xfEqBy" placeholder="ชื่อ-นามสกุล"></div>
+      <button class="xf-btn xf-btn-primary" type="button" id="xfEqSave">💾 บันทึกข้อมูลเครื่อง</button>
+    </div>
+    <div class="xf-tab" data-tab="pm"><div id="xfEqPM"></div></div>
+    <div class="xf-tab" data-tab="repair">
+      <div class="xf-sec">ประวัติการซ่อม</div><div id="xfEqRepairs"></div>
+      <div class="xf-sec">ประวัติการแจ้ง DEFECT</div><div id="xfEqDefects"></div>
+      <div class="xf-sec">➕ เพิ่มรายการซ่อม</div>
+      <div class="xf-grid2">
+        <div class="xf-row"><label>วันที่แจ้ง</label><input type="date" data-xf-rep="order_date"></div>
+        <div class="xf-row"><label>เลขที่ใบงาน</label><input type="text" data-xf-rep="job_number"></div>
+        <div class="xf-row"><label>วันที่ซ่อมเสร็จ</label><input type="date" data-xf-rep="final_date"></div>
+        <div class="xf-row"><label>อะไหล่ที่เปลี่ยน</label><input type="text" data-xf-rep="spare_parts"></div>
+      </div>
+      <div class="xf-row"><label>สาเหตุ</label><textarea data-xf-rep="cause"></textarea></div>
+      <div class="xf-row"><label>วิธีแก้ไข</label><textarea data-xf-rep="solution"></textarea></div>
+      <div class="xf-row"><label>ผู้บันทึก</label><input type="text" data-xf-rep="reported_by" placeholder="ชื่อ-นามสกุล"></div>
+      <button class="xf-btn xf-btn-primary" type="button" id="xfRepSave">💾 บันทึกรายการซ่อม</button>
+    </div>
+  </div>
+</div>
+
+<!-- อัพโหลดเอกสารเซ็น (AI Check) — ใช้ DocTracking Apps Script ตัวเดียวกับ EAF -->
+<div class="xf-ov" id="xfDocOv">
+  <div class="xf-box" style="width:min(420px,94vw);">
+    <h3>📋 อัพโหลดเอกสารเซ็น <button class="xf-x" type="button" data-xf-close="xfDocOv">&times;</button></h3>
+    <div class="xf-row"><label>Machine ID</label><input type="text" id="xfDocMid" readonly></div>
+    <div class="xf-row"><label>เลขที่เอกสาร (doc_id)</label><input type="text" id="xfDocId" placeholder="ว่างไว้ = สร้างใหม่อัตโนมัติ"></div>
+    <div class="xf-row"><label>ด่านปัจจุบัน</label>
+      <select id="xfDocStage"><option value="1">1 — หัวหน้าช่าง</option><option value="2">2 — วิศวกร</option><option value="3">3 — วิศวกร PCS</option></select>
+    </div>
+    <div class="xf-row"><label>ชื่อผู้อนุมัติ</label><input type="text" id="xfDocApprover" placeholder="ชื่อ-นามสกุล"></div>
+    <div class="xf-row"><label>ลายเซ็นออนไลน์ (ยืนยันตัวตน)</label>
+      <div class="xf-sigwrap"><canvas id="xfSigPad"></canvas><div class="xf-sighint" id="xfSigHint">✍️ เซ็นชื่อในกรอบนี้</div></div>
+      <div style="text-align:right;margin-top:6px;"><button type="button" class="xf-btn-ghost" id="xfSigClear" style="padding:5px 10px;border-radius:6px;cursor:pointer;font-size:12px;background:transparent;border:1px solid #243040;color:#8aa0b5;">↺ ล้างลายเซ็น</button></div>
+    </div>
+    <div class="xf-row"><label>ถ่ายรูป / เลือกไฟล์เอกสารที่เซ็นแล้ว</label>
+      <input type="file" id="xfDocFile" accept="image/*" capture="environment">
+      <img id="xfDocPreview" style="width:100%;border-radius:8px;margin-top:8px;display:none;">
+    </div>
+    <button class="xf-btn xf-btn-primary" type="button" id="xfDocSubmit">✅ ส่งตรวจสอบ (AI Check)</button>
+    <button class="xf-btn xf-btn-ghost" type="button" data-xf-close="xfDocOv">ปิด</button>
+    <div class="xf-sub" id="xfDocLoading" style="display:none;text-align:center;margin-top:10px;">🔄 AI กำลังตรวจสอบเอกสาร...</div>
+    <div class="xf-status" id="xfDocStatus"></div>
+    <div id="xfDocTimeline" style="margin-top:10px;"></div>
+  </div>
+</div>
+
+<div class="xf-toast" id="xfToast"></div>
+
+<script>
+const XF = (function(){
+  const DOC_TRACKING_API_URL = 'https://script.google.com/macros/s/AKfycbz_vS7dFGmi_wxeBTxP-az6EepjG4AkZwE5AHcE4esEMPWii9zQGAyDO_oGJzoR9mtq/exec';
+  const C = XF_CFG;
+  const LS_ORDER = 'xf_ordering_' + C.app;
+  const LS_NAME = 'xf_name_' + C.app;
+  let ordering = new Set();
+  try { ordering = new Set(JSON.parse(localStorage.getItem(LS_ORDER) || '[]')); } catch(e) {}
+  const photos = { defect: [], equip: [] };
+  let curDefectId = null, curEquipId = null, curEquipTech = null;
+
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const item = id => C.items().find(it => it.id === id) || { id: id };
+  const getName = () => { try { return localStorage.getItem(LS_NAME) || ''; } catch(e) { return ''; } };
+  const setName = n => { try { if (n) localStorage.setItem(LS_NAME, n); } catch(e) {} };
+
+  let toastT;
+  function toast(msg) {
+    const t = $('xfToast'); t.textContent = msg; t.style.display = 'block';
+    clearTimeout(toastT); toastT = setTimeout(() => { t.style.display = 'none'; }, 2800);
+  }
+
+  function open(id) { $(id).classList.add('open'); }
+  function close(id) { $(id).classList.remove('open'); }
+
+  // ── ติดต่อ Apps Script ของแอพนี้ ──
+  async function gsGet(action, machineId) {
+    if (!C.gsUrl) throw new Error('ยังไม่ได้ตั้งค่า URL ของ Apps Script');
+    const url = C.gsUrl + '?action=' + encodeURIComponent(action) + (machineId ? '&machine_id=' + encodeURIComponent(machineId) : '');
+    const res = await fetch(url);
+    return res.json();
+  }
+  async function gsPost(payload) {
+    if (!C.gsUrl) throw new Error('ยังไม่ได้ตั้งค่า URL ของ Apps Script');
+    const res = await fetch(C.gsUrl, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) });
+    try { return await res.json(); } catch(e) { return { success: true }; }
+  }
+
+  function fmtDate(v) {
+    if (!v) return '-';
+    const d = new Date(v);
+    return isNaN(d) ? esc(v) : d.toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: '2-digit' });
+  }
+  function driveThumb(url) {
+    const m = /[?&]id=([\w-]+)/.exec(url || '') || /\/d\/([\w-]+)/.exec(url || '');
+    return m ? 'https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w400' : url;
+  }
+  function table(rows, cols) {
+    if (!rows || !rows.length) return '<div class="xf-empty">ยังไม่มีข้อมูล</div>';
+    return '<table class="xf-tbl"><thead><tr>' + cols.map(c => '<th>' + c[0] + '</th>').join('') + '</tr></thead><tbody>' +
+      rows.map(r => '<tr>' + cols.map(c => '<td>' + c[1](r) + '</td>').join('') + '</tr>').join('') + '</tbody></table>';
+  }
+
+  // ── รูปถ่าย (บีบอัดก่อนส่ง) ──
+  function compress(file, maxW, q) {
+    return new Promise((resolve, reject) => {
+      const rd = new FileReader();
+      rd.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          let w = img.width, h = img.height;
+          if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
+          const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+          cv.getContext('2d').drawImage(img, 0, 0, w, h);
+          resolve(cv.toDataURL('image/jpeg', q));
+        };
+        img.onerror = reject; img.src = rd.result;
+      };
+      rd.onerror = reject; rd.readAsDataURL(file);
+    });
+  }
+  function renderPhotos(grp, existing) {
+    const box = document.querySelector('[data-xf-photos="' + grp + '"]');
+    const n = +box.dataset.n;
+    let html = '';
+    for (let i = 0; i < n; i++) {
+      const src = photos[grp][i] || (existing && existing[i]) || '';
+      html += '<div class="xf-photo" data-idx="' + i + '">' +
+        (src ? '<img src="' + esc(src) + '">' + (photos[grp][i] ? '<button type="button" class="xf-del" data-idx="' + i + '">✕</button>' : '') : '📷<br>ถ่าย/เลือกรูป') +
+        '</div>';
+    }
+    box.innerHTML = html;
+  }
+  function bindPhotos(grp, getExisting) {
+    const box = document.querySelector('[data-xf-photos="' + grp + '"]');
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = 'image/*'; input.setAttribute('capture', 'environment'); input.style.display = 'none';
+    document.body.appendChild(input);
+    let target = 0;
+    box.addEventListener('click', e => {
+      const del = e.target.closest('.xf-del');
+      if (del) { e.stopPropagation(); photos[grp][+del.dataset.idx] = null; renderPhotos(grp, getExisting()); return; }
+      const slot = e.target.closest('.xf-photo');
+      if (slot) { target = +slot.dataset.idx; input.click(); }
+    });
+    input.addEventListener('change', async () => {
+      const f = input.files[0]; input.value = '';
+      if (!f) return;
+      try { photos[grp][target] = await compress(f, 1000, 0.72); } catch(e) { toast('อ่านรูปไม่สำเร็จ'); }
+      renderPhotos(grp, getExisting());
+    });
+  }
+
+  // ── รอสั่งซื้ออะไหล่ ──
+  function saveOrdering() { try { localStorage.setItem(LS_ORDER, JSON.stringify([...ordering])); } catch(e) {} }
+  async function refreshOrdering() {
+    if (!C.gsUrl) return;
+    try {
+      const j = await gsGet('getOrdering');
+      if (j && j.success && Array.isArray(j.ordering)) {
+        ordering = new Set(j.ordering); saveOrdering(); C.refresh();
+      }
+    } catch(e) { console.warn('getOrdering failed', e); }
+  }
+  async function setOrder(id, on) {
+    const by = getName();
+    if (on) ordering.add(id); else ordering.delete(id);
+    saveOrdering(); C.refresh(); refreshBar();
+    toast(on ? '🛒 ตั้งสถานะรอสั่งซื้ออะไหล่: ' + id : '❌ ยกเลิกรอสั่งซื้อ: ' + id);
+    try { await gsPost({ action: 'toggle_order_status', machine_id: id, status: on ? 'ordering' : 'cancelled', by: by }); }
+    catch(e) { toast('บันทึกในเครื่องแล้ว แต่ส่งขึ้น Sheet ไม่สำเร็จ'); }
+  }
+
+  // ── แถบปุ่มในหน้าต่างเครื่อง ──
+  let barId = null, barEl = null;
+  function attachBar(container, id, beforeEl) {
+    barId = id;
+    if (!barEl) {
+      barEl = document.createElement('div');
+      barEl.className = 'xf-bar';
+      barEl.addEventListener('click', e => {
+        const b = e.target.closest('button'); if (!b) return;
+        const act = b.dataset.act;
+        if (act === 'defect') openDefect(barId);
+        else if (act === 'equip') openEquip(barId);
+        else if (act === 'order') { if (confirm('ตั้งสถานะ "รอสั่งซื้ออะไหล่" ให้ ' + barId + ' ?')) setOrder(barId, true); }
+        else if (act === 'unorder') { if (confirm('ยกเลิกสถานะรอสั่งซื้อของ ' + barId + ' ?')) setOrder(barId, false); }
+        else if (act === 'doc') openDoc(barId);
+      });
+    }
+    if (beforeEl) container.insertBefore(barEl, beforeEl); else container.appendChild(barEl);
+    refreshBar();
+  }
+  function refreshBar() {
+    if (!barEl || !barId) return;
+    const broken = C.isBroken(barId), ord = ordering.has(barId);
+    barEl.innerHTML =
+      '<button type="button" class="xf-b-defect" data-act="defect">🛠️ แจ้ง DEFECT</button>' +
+      '<button type="button" class="xf-b-equip" data-act="equip">🗂 ทะเบียนประวัติ</button>' +
+      (ord ? '<button type="button" class="xf-b-unorder" data-act="unorder">❌ ยกเลิกสั่งซื้อ</button>'
+           : (broken ? '<button type="button" class="xf-b-order" data-act="order">🛒 รอสั่งซื้ออะไหล่</button>' : '')) +
+      ((broken || ord) ? '<button type="button" class="xf-b-doc" data-act="doc">📋 ส่งเอกสารตรวจสอบ (AI Check)</button>' : '');
+  }
+
+  // ── รายการชำรุด ──
+  function brokenItems() { return C.items().filter(it => C.isBroken(it.id) || ordering.has(it.id)); }
+  function openBroken() {
+    const list = brokenItems();
+    $('xfBrokenSub').textContent = 'ทั้งหมด ' + list.length + ' ' + C.unit + ' · รอสั่งซื้ออะไหล่ ' + list.filter(it => ordering.has(it.id)).length;
+    $('xfBrokenBody').innerHTML = list.length ? list.map(it =>
+      '<div class="xf-list-item" data-id="' + esc(it.id) + '"><span class="xf-id">' + esc(it.id) + '</span>' +
+      '<span class="xf-loc">ชั้น ' + esc(it.floor) + (it.zone ? ' · โซน ' + esc(it.zone) : '') + ' · ' + esc(it.location || '-') + '</span>' +
+      (ordering.has(it.id) ? '<span class="xf-tag ord">🛒 รอสั่งซื้อ</span>' : '<span class="xf-tag br">ชำรุด</span>') + '</div>'
+    ).join('') : '<div class="xf-empty">ไม่มีรายการชำรุด 🎉</div>';
+    open('xfBrokenOv');
+  }
+
+  // ── DEFECT ──
+  function openDefect(id) {
+    curDefectId = id;
+    const it = item(id);
+    $('xfDefectSub').textContent = id + ' · ชั้น ' + (it.floor || '-') + ' · ' + (it.location || '-');
+    $('xfDefectReporter').value = getName();
+    $('xfDefectDetail').value = '';
+    document.querySelectorAll('#xfDefectUrg button').forEach(b => b.classList.toggle('sel', b.dataset.urg === 'ปกติ'));
+    photos.defect = [];
+    renderPhotos('defect');
+    open('xfDefectOv');
+  }
+  async function submitDefect() {
+    const reporter = $('xfDefectReporter').value.trim();
+    const detail = $('xfDefectDetail').value.trim();
+    if (!reporter) { toast('กรุณาระบุชื่อผู้แจ้ง'); return; }
+    if (!detail) { toast('กรุณากรอกรายละเอียดปัญหา'); return; }
+    const urg = (document.querySelector('#xfDefectUrg button.sel') || {}).dataset;
+    const it = item(curDefectId);
+    const btn = $('xfDefectSubmit'); btn.disabled = true; btn.textContent = 'กำลังส่ง...';
+    setName(reporter);
+    const urgTxt = urg ? urg.urg : 'ปกติ';
+    if (typeof jobTrackReport === 'function') jobTrackReport({
+      id: curDefectId, source: 'DEFECT', reporter: reporter, label: '🛠️ แจ้ง DEFECT (' + urgTxt + ')',
+      location: jobTrackLoc(it.floor, it.zone, it.location),
+      detail: ['ระบบ: ' + C.name, 'แจ้ง DEFECT — ความเร่งด่วน: ' + urgTxt, detail].join('\n'),
+      photos: photos.defect
+    });
+    try {
+      const j = await gsPost({ action: 'log_defect', machine_id: curDefectId, floor: it.floor || '', zone: it.zone || '', location: it.location || '',
+        detail: detail, reporter: reporter, urgency: urg ? urg.urg : 'ปกติ', photo: photos.defect[0] || '' });
+      if (j && j.success === false) throw new Error(j.error || 'ส่งไม่สำเร็จ');
+      toast('✅ แจ้ง DEFECT ' + curDefectId + ' เรียบร้อย');
+      close('xfDefectOv');
+    } catch(e) { toast('❌ ' + e.message); }
+    btn.disabled = false; btn.textContent = '📤 ส่งแจ้ง DEFECT';
+  }
+
+  // ── ทะเบียนประวัติ ──
+  function showTab(tab) {
+    document.querySelectorAll('#xfEquipTabs button').forEach(b => b.classList.toggle('act', b.dataset.tab === tab));
+    document.querySelectorAll('#xfEquipOv .xf-tab').forEach(t => t.classList.toggle('act', t.dataset.tab === tab));
+  }
+  function existingEquipPhotos() {
+    return curEquipTech ? [curEquipTech.photo1, curEquipTech.photo2, curEquipTech.photo3].map(u => u ? driveThumb(u) : '') : [];
+  }
+  function openEquip(id) {
+    curEquipId = id; curEquipTech = null;
+    const it = item(id);
+    $('xfEquipSub').textContent = id + ' · ' + C.name;
+    $('xfEqId').value = id;
+    $('xfEqAsset').value = it.asset || '-';
+    $('xfEqFloor').value = 'ชั้น ' + (it.floor || '-') + (it.zone ? ' / โซน ' + it.zone : '');
+    $('xfEqLoc').value = it.location || '-';
+    document.querySelectorAll('[data-xf-tech]').forEach(el => { el.value = ''; });
+    document.querySelectorAll('[data-xf-rep]').forEach(el => { el.value = ''; });
+    $('xfEqBy').value = getName();
+    document.querySelector('[data-xf-rep="reported_by"]').value = getName();
+    photos.equip = [];
+    renderPhotos('equip');
+    $('xfEqPM').innerHTML = $('xfEqRepairs').innerHTML = $('xfEqDefects').innerHTML = '<div class="xf-empty">กำลังโหลด...</div>';
+    showTab('info');
+    open('xfEquipOv');
+    loadTech(id); loadPM(id); loadRepairs(id); loadDefects(id);
+  }
+  async function loadTech(id) {
+    try {
+      const j = await gsGet('getTechData', id);
+      if (id !== curEquipId) return;
+      curEquipTech = j && j.tech;
+      if (curEquipTech) {
+        document.querySelectorAll('[data-xf-tech]').forEach(el => {
+          let v = curEquipTech[el.dataset.xfTech];
+          if (el.type === 'date' && v) v = String(v).slice(0, 10);
+          el.value = v == null ? '' : v;
+        });
+      }
+      renderPhotos('equip', existingEquipPhotos());
+    } catch(e) { console.warn('getTechData failed', e); }
+  }
+  async function loadPM(id) {
+    let rows = [];
+    try { rows = await C.pmHistory(id); } catch(e) { $('xfEqPM').innerHTML = '<div class="xf-empty">โหลดประวัติ PM ไม่สำเร็จ</div>'; return; }
+    if (id !== curEquipId) return;
+    rows = (rows || []).slice().sort((a, b) => new Date(b.date) - new Date(a.date));
+    $('xfEqPM').innerHTML = table(rows, [
+      ['วันที่', r => fmtDate(r.date)], ['ผล', r => esc(r.status)], ['ผู้ตรวจ', r => esc(r.by || '-')], ['หมายเหตุ', r => esc(r.note || '')]
+    ]);
+  }
+  async function loadRepairs(id) {
+    try {
+      const j = await gsGet('getRepairs', id);
+      if (id !== curEquipId) return;
+      $('xfEqRepairs').innerHTML = table((j.repairs || []).reverse(), [
+        ['วันที่แจ้ง', r => fmtDate(r.order_date)], ['ใบงาน', r => esc(r.job_number)], ['เสร็จ', r => fmtDate(r.final_date)],
+        ['อะไหล่', r => esc(r.spare_parts)], ['สาเหตุ / วิธีแก้', r => esc(r.cause) + (r.solution ? '<br><span style="color:#8aa0b5">→ ' + esc(r.solution) + '</span>' : '')]
+      ]);
+    } catch(e) { $('xfEqRepairs').innerHTML = '<div class="xf-empty">โหลดไม่สำเร็จ: ' + esc(e.message) + '</div>'; }
+  }
+  async function loadDefects(id) {
+    try {
+      const j = await gsGet('getDefects', id);
+      if (id !== curEquipId) return;
+      $('xfEqDefects').innerHTML = table((j.defects || []).reverse(), [
+        ['วันที่', r => fmtDate(r.date)], ['ความเร่งด่วน', r => esc(r.urgency)], ['รายละเอียด', r => esc(r.detail)],
+        ['ผู้แจ้ง', r => esc(r.reporter)], ['รูป', r => r.photo ? '<a href="' + esc(r.photo) + '" target="_blank" rel="noopener">ดูรูป</a>' : '-']
+      ]);
+    } catch(e) { $('xfEqDefects').innerHTML = '<div class="xf-empty">โหลดไม่สำเร็จ: ' + esc(e.message) + '</div>'; }
+  }
+  async function saveTech() {
+    const by = $('xfEqBy').value.trim();
+    if (!by) { toast('กรุณาระบุชื่อผู้บันทึก'); return; }
+    setName(by);
+    const p = { action: 'save_equipment_tech_data', machine_id: curEquipId, updated_by: by };
+    document.querySelectorAll('[data-xf-tech]').forEach(el => { p[el.dataset.xfTech] = el.value.trim(); });
+    [0, 1, 2].forEach(i => { if (photos.equip[i]) p['photo' + (i + 1)] = photos.equip[i]; });
+    const btn = $('xfEqSave'); btn.disabled = true; btn.textContent = 'กำลังบันทึก...';
+    try {
+      const j = await gsPost(p);
+      if (j && j.success === false) throw new Error(j.error || 'บันทึกไม่สำเร็จ');
+      toast('✅ บันทึกข้อมูลเครื่อง ' + curEquipId + ' แล้ว');
+    } catch(e) { toast('❌ ' + e.message); }
+    btn.disabled = false; btn.textContent = '💾 บันทึกข้อมูลเครื่อง';
+  }
+  async function saveRepair() {
+    const p = { action: 'save_repair_log', machine_id: curEquipId };
+    document.querySelectorAll('[data-xf-rep]').forEach(el => { p[el.dataset.xfRep] = el.value.trim(); });
+    if (!p.order_date && !p.cause && !p.solution) { toast('กรุณากรอกวันที่แจ้ง หรือสาเหตุ/วิธีแก้'); return; }
+    if (!p.reported_by) { toast('กรุณาระบุชื่อผู้บันทึก'); return; }
+    setName(p.reported_by);
+    const btn = $('xfRepSave'); btn.disabled = true; btn.textContent = 'กำลังบันทึก...';
+    try {
+      const j = await gsPost(p);
+      if (j && j.success === false) throw new Error(j.error || 'บันทึกไม่สำเร็จ');
+      toast('✅ บันทึกรายการซ่อมแล้ว');
+      document.querySelectorAll('[data-xf-rep]').forEach(el => { if (el.dataset.xfRep !== 'reported_by') el.value = ''; });
+      loadRepairs(curEquipId);
+    } catch(e) { toast('❌ ' + e.message); }
+    btn.disabled = false; btn.textContent = '💾 บันทึกรายการซ่อม';
+  }
+
+  // ── อัพโหลดเอกสารเซ็น (AI Check) ──
+  let sigCtx = null, sigDrawing = false, sigHas = false;
+  function initSig() {
+    const cv = $('xfSigPad'), r = cv.getBoundingClientRect(), ratio = window.devicePixelRatio || 1;
+    cv.width = (r.width || 300) * ratio; cv.height = (r.height || 140) * ratio;
+    sigCtx = cv.getContext('2d'); sigCtx.scale(ratio, ratio);
+    sigCtx.lineWidth = 2.2; sigCtx.lineCap = 'round'; sigCtx.lineJoin = 'round'; sigCtx.strokeStyle = '#00e5ff';
+    if (cv.dataset.bound) return;
+    cv.dataset.bound = '1';
+    const pos = e => { const b = cv.getBoundingClientRect(); const t = e.touches ? e.touches[0] : e; return { x: t.clientX - b.left, y: t.clientY - b.top }; };
+    const start = e => { e.preventDefault(); sigDrawing = true; const p = pos(e); sigCtx.beginPath(); sigCtx.moveTo(p.x, p.y); };
+    const move = e => { if (!sigDrawing) return; e.preventDefault(); const p = pos(e); sigCtx.lineTo(p.x, p.y); sigCtx.stroke(); sigHas = true; $('xfSigHint').classList.add('hide'); };
+    const end = () => { sigDrawing = false; };
+    cv.addEventListener('mousedown', start); cv.addEventListener('mousemove', move); window.addEventListener('mouseup', end);
+    cv.addEventListener('touchstart', start, { passive: false }); cv.addEventListener('touchmove', move, { passive: false }); cv.addEventListener('touchend', end);
+  }
+  function clearSig() {
+    const cv = $('xfSigPad');
+    if (sigCtx) sigCtx.clearRect(0, 0, cv.width, cv.height);
+    sigHas = false; $('xfSigHint').classList.remove('hide');
+  }
+  function docStatus(type, msg) { const el = $('xfDocStatus'); el.className = 'xf-status ' + type; el.textContent = msg; }
+  async function docApi(payload) {
+    const res = await fetch(DOC_TRACKING_API_URL, { method: 'POST', body: JSON.stringify(payload) });
+    return res.json();
+  }
+  function openDoc(id) {
+    $('xfDocMid').value = id; $('xfDocId').value = ''; $('xfDocStage').value = '1';
+    $('xfDocApprover').value = getName(); $('xfDocFile').value = '';
+    $('xfDocPreview').style.display = 'none'; $('xfDocStatus').className = 'xf-status';
+    $('xfDocLoading').style.display = 'none'; $('xfDocTimeline').innerHTML = '';
+    open('xfDocOv');
+    initSig(); clearSig();
+  }
+  function fileB64(file) {
+    return new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result.split(',')[1]); r.onerror = reject; r.readAsDataURL(file); });
+  }
+  async function submitDoc() {
+    const mid = $('xfDocMid').value.trim();
+    let docId = $('xfDocId').value.trim();
+    const stage = Number($('xfDocStage').value);
+    const approver = $('xfDocApprover').value.trim();
+    const file = $('xfDocFile').files[0];
+    if (!approver) { docStatus('err', 'กรุณาระบุชื่อผู้อนุมัติ'); return; }
+    if (!sigHas) { docStatus('err', 'กรุณาเซ็นชื่อในช่องลายเซ็นออนไลน์เพื่อยืนยันตัวตน'); return; }
+    if (!file) { docStatus('err', 'กรุณาแนบรูปเอกสารที่เซ็นแล้ว'); return; }
+    setName(approver);
+    $('xfDocLoading').style.display = 'block'; $('xfDocStatus').className = 'xf-status';
+    try {
+      if (!docId) {
+        const c = await docApi({ action: 'createDoc', machine_id: mid, created_by: approver });
+        if (!c.success) throw new Error(c.error || 'สร้างเอกสารไม่สำเร็จ');
+        docId = c.doc_id; $('xfDocId').value = docId;
+      }
+      const up = await docApi({
+        action: 'uploadSignedDoc', doc_id: docId, machine_id: mid, stage_number: stage, approver_name: approver,
+        image_base64: await fileB64(file), mime_type: file.type || 'image/jpeg',
+        signature_base64: $('xfSigPad').toDataURL('image/png').split(',')[1], signature_mime_type: 'image/png'
+      });
+      $('xfDocLoading').style.display = 'none';
+      if (!up.success) throw new Error(up.error || 'อัพโหลดไม่สำเร็จ');
+      if (up.status === 'passed') docStatus('ok', '✅ ผ่านการตรวจสอบ — ส่งต่อไปด่าน "' + up.next_stage_name + '" แล้ว');
+      else if (up.status === 'completed') docStatus('ok', '🎉 เอกสารอนุมัติครบทุกด่านแล้ว');
+      else if (up.status === 'flagged') docStatus('flag', '⚠️ AI ตรวจพบข้อมูลไม่ครบ: ' + ((up.missing_items || []).join(', ') || 'ไม่ระบุ') + ' — กรุณาแก้ไขแล้วอัพโหลดใหม่');
+      loadDocHistory(docId);
+    } catch(e) {
+      $('xfDocLoading').style.display = 'none';
+      docStatus('err', '❌ ' + e.message);
+    }
+  }
+  async function loadDocHistory(docId) {
+    try {
+      const res = await docApi({ action: 'getDocStatus', doc_id: docId });
+      if (!res.success || !res.found) return;
+      $('xfDocTimeline').innerHTML = (res.history || []).map(h =>
+        '<div class="xf-timeline-item"><span>' + esc(h.stage_name) + ' — ' + esc(h.event_type) + '</span><span>' + new Date(h.timestamp).toLocaleString('th-TH') + '</span></div>').join('');
+    } catch(e) {}
+  }
+
+  // ── wiring ──
+  function init() {
+    (C.specLabels || []).forEach((l, i) => { const el = $('xfSpec' + (i + 1) + 'Lbl'); if (el) el.textContent = l; });
+    document.querySelectorAll('[data-xf-close]').forEach(b => b.addEventListener('click', () => close(b.dataset.xfClose)));
+    document.querySelectorAll('.xf-ov').forEach(ov => ov.addEventListener('click', e => { if (e.target === ov) close(ov.id); }));
+    $('xfBrokenBody').addEventListener('click', e => {
+      const row = e.target.closest('.xf-list-item'); if (!row) return;
+      close('xfBrokenOv'); C.openItem(row.dataset.id);
+    });
+    $('xfDefectUrg').addEventListener('click', e => {
+      const b = e.target.closest('button'); if (!b) return;
+      document.querySelectorAll('#xfDefectUrg button').forEach(x => x.classList.toggle('sel', x === b));
+    });
+    $('xfDefectSubmit').addEventListener('click', submitDefect);
+    $('xfEquipTabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) showTab(b.dataset.tab); });
+    $('xfEqSave').addEventListener('click', saveTech);
+    $('xfRepSave').addEventListener('click', saveRepair);
+    $('xfSigClear').addEventListener('click', clearSig);
+    $('xfDocSubmit').addEventListener('click', submitDoc);
+    $('xfDocFile').addEventListener('change', e => {
+      const f = e.target.files[0]; if (!f) return;
+      const r = new FileReader(); r.onload = ev => { $('xfDocPreview').src = ev.target.result; $('xfDocPreview').style.display = 'block'; }; r.readAsDataURL(f);
+    });
+    bindPhotos('defect', () => null);
+    bindPhotos('equip', existingEquipPhotos);
+    C.install();
+    C.refresh();
+    refreshOrdering();
+    setInterval(refreshOrdering, 60000);
+  }
+
+  return {
+    init, attachBar, refreshBar, openBroken, openDefect, openEquip, openDoc,
+    isOrdering: id => ordering.has(id),
+    orderingCount: () => C.items().filter(it => ordering.has(it.id)).length,
+    brokenCount: () => brokenItems().length,
+    gsGet, esc, refreshOrdering
+  };
+})();
+XF.init();
+</script>
+
 </body>
 </html>
